@@ -113,3 +113,7 @@ _Avoid_: Fallback config, starter config
 **Inventory**:
 A launcher-exported listing of every launchable app and Shortcut with the identifiers a Pie Config can reference.
 _Avoid_: App list, catalog
+
+**Launcher Settings**:
+The launcher's own settings screen, reached from the empty-space menu or its own Drawer Entry; it manages the Pie Config and Inventory, not the Pie's layout.
+_Avoid_: Preferences, config screen
