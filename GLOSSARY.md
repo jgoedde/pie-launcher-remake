@@ -78,6 +78,24 @@ _Avoid_: Deep link, quick action
 An app's request to add one of its Shortcuts to the launcher; Pie Launcher always accepts it, adding the Shortcut to the App Drawer and the Inventory but never to a Layer.
 _Avoid_: Add to home screen, install request
 
+## Icons
+
+**Themed Icon**:
+An app or Shortcut icon drawn as a monochrome mask tinted with Monet colours on a Monet background; the mask is the icon's own monochrome layer, else a Generated Monochrome.
+_Avoid_: Material You icon, mono icon
+
+**Generated Monochrome**:
+A monochrome mask computed from a full-colour icon with AOSP's luminance algorithm, for icons that ship no monochrome layer.
+_Avoid_: Auto-icon, forced mono
+
+**Original Icon**:
+An icon shown in its own colours, untinted; used for Shortcuts whose icon is a bitmap (e.g. contact photos), except PWAs.
+_Avoid_: Raw icon, colour icon
+
+**PWA**:
+A pinned Shortcut owned by a browser package (an app that handles `https` `VIEW` intents as `BROWSABLE`); always a Themed Icon, even though its favicon is a bitmap.
+_Avoid_: Web app, WebAPK
+
 ## Configuration
 
 **Pie Config**:
