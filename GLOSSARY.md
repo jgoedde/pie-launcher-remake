@@ -17,8 +17,16 @@ One horizontally swipeable home-screen screen; every Page has the Pie Zone in th
 _Avoid_: Screen, workspace
 
 **App Drawer**:
-The searchable list of all launchable apps, as known from standard launchers.
+The searchable, alphabetical list of all launchable apps and pinned Shortcuts, as known from standard launchers.
 _Avoid_: App grid, all-apps
+
+**Drawer Entry**:
+One row in the App Drawer: either a launchable app or a pinned Shortcut.
+_Avoid_: Drawer item, tile
+
+**New Badge**:
+The marker on a Drawer Entry that was recently added and has not been launched yet.
+_Avoid_: Unread dot, highlight
 
 ## Pie
 
