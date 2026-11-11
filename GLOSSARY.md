@@ -74,6 +74,10 @@ _Avoid_: Dangling item, broken item, dead link
 An app-provided action (static, dynamic or pinned) that launches a specific part of an app; pinned Shortcuts include browser-installed PWAs.
 _Avoid_: Deep link, quick action
 
+**Pin Request**:
+An app's request to add one of its Shortcuts to the launcher; Pie Launcher always accepts it, adding the Shortcut to the App Drawer and the Inventory but never to a Layer.
+_Avoid_: Add to home screen, install request
+
 ## Configuration
 
 **Pie Config**:
