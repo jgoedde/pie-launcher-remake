@@ -75,6 +75,17 @@ private val IconSize = 48.dp
 private val MenuIconSize = 24.dp
 private val OwnerBadgeSize = 20.dp
 
+// Long-press menu sizes, copied from M3's DropdownMenu so the custom menu looks the same.
+private val MenuVerticalPadding = 8.dp
+private val MenuMinWidth = 112.dp
+private val MenuMaxWidth = 280.dp
+
+// Edge margin as in M3's menu, keeps the menu off the system bars.
+private val MenuEdgeMargin = 48.dp
+
+// Transparent room around the menu card so its shadow is not clipped by the popup window.
+private val MenuShadowMargin = 4.dp
+
 /** What a Drawer Entry and its long-press menu can do. */
 interface DrawerEntryActions {
     fun launch(entry: DrawerEntry)
@@ -159,10 +170,15 @@ internal fun DrawerEntryRow(
         }
         menuShortcuts?.let { shortcuts ->
             val dismiss = { menuShortcuts = null }
-            val position = remember(pressAt) { ThumbMenuPositionProvider(pressAt.x.roundToInt()) }
+            val shadowMargin = MenuShadowMargin.toPx()
+            val edgeMargin = MenuEdgeMargin.toPx()
+            val positionProvider =
+                remember(pressAt, shadowMargin, edgeMargin) {
+                    ThumbMenuPositionProvider(pressAt.x.roundToInt(), shadowMargin, edgeMargin)
+                }
             when (entry) {
-                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, position, onDismiss = dismiss)
-                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, position, onDismiss = dismiss)
+                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, positionProvider, onDismiss = dismiss)
+                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, positionProvider, onDismiss = dismiss)
             }
         }
     }
@@ -172,14 +188,14 @@ internal fun DrawerEntryRow(
 private fun PinnedShortcutMenu(
     entry: DrawerEntry.Shortcut,
     actions: DrawerEntryActions,
-    position: PopupPositionProvider,
+    positionProvider: PopupPositionProvider,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DrawerMenu(position, onDismiss) {
+    DrawerMenu(positionProvider, onDismiss) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.drawer_remove)) },
             onClick = { run { actions.remove(entry.shortcut) } },
@@ -197,14 +213,14 @@ private fun AppMenu(
     shortcuts: List<ShortcutInfo>,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
-    position: PopupPositionProvider,
+    positionProvider: PopupPositionProvider,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DrawerMenu(position, onDismiss) {
+    DrawerMenu(positionProvider, onDismiss) {
         shortcuts.forEach { shortcut ->
             DropdownMenuItem(
                 text = {
@@ -240,6 +256,8 @@ private fun AppMenu(
  */
 private class ThumbMenuPositionProvider(
     private val pressX: Int,
+    private val shadowMargin: Int,
+    private val edgeMargin: Int,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -247,31 +265,36 @@ private class ThumbMenuPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
+        // The content carries [shadowMargin] of transparent room on every side; place the visible
+        // card, not the content box.
         val width = popupContentSize.width
         val height = popupContentSize.height
-        val x = (anchorBounds.left + pressX - width).coerceIn(0, maxOf(0, windowSize.width - width))
-        val above = anchorBounds.top - height
-        val below = anchorBounds.bottom
+        val maxX = maxOf(-shadowMargin, windowSize.width - width + shadowMargin)
+        val x = (anchorBounds.left + pressX - width + shadowMargin).coerceIn(-shadowMargin, maxX)
+        val minY = edgeMargin - shadowMargin
+        val maxY = maxOf(minY, windowSize.height - edgeMargin - height + shadowMargin)
+        val above = anchorBounds.top - height + shadowMargin
+        val below = anchorBounds.bottom - shadowMargin
         val y =
             when {
-                above >= 0 -> above
-                below + height <= windowSize.height -> below
-                else -> above.coerceIn(0, maxOf(0, windowSize.height - height))
+                above >= minY -> above
+                below <= maxY -> below
+                else -> above.coerceIn(minY, maxY)
             }
         return IntOffset(x, y)
     }
 }
 
-/** An M3-looking menu in a [Popup] placed by [position]; dismisses on outside tap and back. */
+/** An M3-looking menu in a [Popup] placed by [positionProvider]; dismisses on outside tap and back. */
 @Composable
 private fun DrawerMenu(
-    position: PopupPositionProvider,
+    positionProvider: PopupPositionProvider,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
     Popup(
-        popupPositionProvider = position,
+        popupPositionProvider = positionProvider,
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
@@ -281,12 +304,12 @@ private fun DrawerMenu(
                 color = MenuDefaults.containerColor,
                 tonalElevation = MenuDefaults.TonalElevation,
                 shadowElevation = MenuDefaults.ShadowElevation,
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier.padding(MenuShadowMargin),
             ) {
                 Column(
                     Modifier
-                        .padding(vertical = 8.dp)
-                        .widthIn(min = 112.dp, max = 280.dp)
+                        .padding(vertical = MenuVerticalPadding)
+                        .widthIn(min = MenuMinWidth, max = MenuMaxWidth)
                         .width(IntrinsicSize.Max)
                         .verticalScroll(rememberScrollState()),
                     content = content,
