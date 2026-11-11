@@ -4,4 +4,10 @@
     <string name="drawer_no_results">No apps match “%1$s”</string>
     <string name="drawer_app_info">App info</string>
     <string name="drawer_uninstall">Uninstall</string>
+    <string name="drawer_remove">Remove</string>
+    <string name="drawer_new_badge">New</string>
+    <string name="drawer_removed">“%1$s” removed</string>
+    <string name="drawer_undo">Undo</string>
+    <string name="pin_added">‘%1$s’ added to App Drawer</string>
+    <string name="pin_already_added">‘%1$s’ is already in the App Drawer</string>
 </resources>

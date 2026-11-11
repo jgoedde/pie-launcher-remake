@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.metro)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 // The release workflow passes the tag (`-PversionTag=vX.Y.Z`); it is the single source of truth.
@@ -78,6 +80,10 @@ kotlin {
     jvmToolchain(21)
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     implementation(project(":core"))
 
@@ -90,4 +96,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 }

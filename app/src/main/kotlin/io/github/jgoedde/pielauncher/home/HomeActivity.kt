@@ -15,12 +15,23 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.core.view.WindowCompat
@@ -28,18 +39,35 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
+import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
+import io.github.jgoedde.pielauncher.drawer.DrawerEntry
 import io.github.jgoedde.pielauncher.drawer.DrawerEntryActions
 import io.github.jgoedde.pielauncher.drawer.DrawerViewModel
 import io.github.jgoedde.pielauncher.drawer.rememberDrawerState
 import io.github.jgoedde.pielauncher.platform.LauncherApp
+import io.github.jgoedde.pielauncher.platform.PinnedShortcut
+import io.github.jgoedde.pielauncher.platform.ShortcutPins
+import io.github.jgoedde.pielauncher.platform.entryKey
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class HomeActivity : ComponentActivity() {
     private val graph by lazy { (application as PieLauncherApplication).graph }
 
     private val drawerViewModel: DrawerViewModel by viewModels {
-        viewModelFactory { initializer { DrawerViewModel(graph.appsRepository.apps) } }
+        viewModelFactory {
+            initializer {
+                DrawerViewModel(
+                    apps = graph.appsRepository.apps,
+                    pinnedShortcuts = graph.appsRepository.pinnedShortcuts,
+                    newBadges = graph.newBadges.active,
+                    pendingRemovals = graph.shortcutPins.pendingRemovals,
+                )
+            }
+        }
     }
 
     /** Home pressed while the launcher is already in front. */
@@ -70,7 +98,9 @@ class HomeActivity : ComponentActivity() {
             PieLauncherTheme {
                 val drawer = rememberDrawerState()
                 val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
-                val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close) }
+                val snackbars = remember { SnackbarHostState() }
+                val scope = rememberCoroutineScope()
+                val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close, scope, snackbars) }
 
                 LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
 
@@ -91,17 +121,35 @@ class HomeActivity : ComponentActivity() {
                         iconLoader = graph.iconLoader,
                         actions = drawerActions,
                     )
+                    SnackbarHost(
+                        snackbars,
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+                    )
                 }
             }
         }
     }
 
-    /** Launching an app or one of its Shortcuts closes the Drawer; system screens leave it open. */
+    /**
+     * Launching an entry or one of its Shortcuts closes the Drawer; system screens leave it open.
+     * The first launch of an entry clears its New Badge.
+     */
     private inner class HomeDrawerActions(
         private val closeDrawer: () -> Unit,
+        private val scope: CoroutineScope,
+        private val snackbars: SnackbarHostState,
     ) : DrawerEntryActions {
-        override fun launch(app: LauncherApp) {
-            if (graph.appLauncher.launch(app)) closeDrawer()
+        override fun launch(entry: DrawerEntry) {
+            val launched =
+                when (entry) {
+                    is DrawerEntry.App -> graph.appLauncher.launch(entry.app)
+                    is DrawerEntry.Shortcut -> graph.appLauncher.launch(entry.shortcut.info)
+                }
+            if (!launched) return
+            if (entry.isNew) graph.newBadges.clear(entry.key)
+            closeDrawer()
         }
 
         override suspend fun shortcutsOf(app: LauncherApp): List<ShortcutInfo> = graph.appShortcuts.of(app)
@@ -110,8 +158,35 @@ class HomeActivity : ComponentActivity() {
             if (graph.appLauncher.launch(shortcut)) closeDrawer()
         }
 
-        override fun openAppInfo(app: LauncherApp) {
-            graph.appLauncher.openAppInfo(app)
+        override fun openAppInfo(entry: DrawerEntry) {
+            when (entry) {
+                is DrawerEntry.App -> graph.appLauncher.openAppInfo(entry.app)
+                is DrawerEntry.Shortcut -> graph.appLauncher.openAppInfo(entry.shortcut)
+            }
+        }
+
+        /**
+         * Hides the entry at once and offers Undo until [ShortcutPins.UNDO_WINDOW_MILLIS] runs out;
+         * only then is the Shortcut unpinned. The snackbar is dismissed when the window closes.
+         */
+        override fun remove(shortcut: PinnedShortcut) {
+            val pins = graph.shortcutPins
+            pins.remove(shortcut.key)
+            graph.newBadges.clear(shortcut.key.entryKey)
+            scope.launch {
+                val shown =
+                    launch {
+                        val result =
+                            snackbars.showSnackbar(
+                                message = getString(R.string.drawer_removed, shortcut.label),
+                                actionLabel = getString(R.string.drawer_undo),
+                                duration = SnackbarDuration.Indefinite,
+                            )
+                        if (result == SnackbarResult.ActionPerformed) pins.undoRemoval(shortcut.key)
+                    }
+                pins.pendingRemovals.first { shortcut.key !in it }
+                shown.cancel()
+            }
         }
 
         override fun uninstall(app: LauncherApp) {
