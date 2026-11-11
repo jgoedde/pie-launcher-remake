@@ -92,6 +92,10 @@ _Avoid_: Auto-icon, forced mono
 An icon shown in its own colours, untinted; used for Shortcuts whose icon is a bitmap (e.g. contact photos), except PWAs.
 _Avoid_: Raw icon, colour icon
 
+**Icon Shape**:
+The one shape every app icon, Shortcut icon and Layer Switch is clipped to; the user picks it in the system's wallpaper and style settings, a circle by default.
+_Avoid_: Icon mask, adaptive shape
+
 **PWA**:
 A pinned Shortcut owned by a browser package (an app that handles `https` `VIEW` intents as `BROWSABLE`); always a Themed Icon, even though its favicon is a bitmap.
 _Avoid_: Web app, WebAPK
