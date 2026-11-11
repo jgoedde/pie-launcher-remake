@@ -1,0 +1,18 @@
+Pie Launcher
+Copyright 2026 Julian Gödde
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party code
+----------------
+
+Files ported from other projects keep their original copyright header,
+followed by a "Modified by Pie Launcher" line. Each source is listed below
+when its first file is ported.
+
+Allowed sources: Apache-2.0 (or more permissive) code only, for example
+AOSP and Lawnchair. GPL-licensed launchers such as Kvaesitso may be read
+for ideas and behaviour, but their code must not be copied or closely
+paraphrased.
+
+(none ported yet)
