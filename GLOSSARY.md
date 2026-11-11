@@ -42,6 +42,14 @@ _Avoid_: Slot, entry
 A Pie Item that, when hovered for the Hover Delay, replaces the current Layer with its target Layer.
 _Avoid_: Layer link
 
+**Inner Circle**:
+The circle just inside the ring of Pie Items; once the finger is outside it, only the finger's direction from the Pie's centre decides which Pie Item is hovered.
+_Avoid_: Dead zone, band
+
+**Progress Disc**:
+The filling disc inside the Inner Circle that shows how much of the Hover Delay has elapsed.
+_Avoid_: Loading indicator, progress ring
+
 **Hover Delay**:
 The short dwell time a finger must rest on a Pie Item before a Layer Switch fires or an app's Shortcuts open.
 _Avoid_: Throttle, debounce
