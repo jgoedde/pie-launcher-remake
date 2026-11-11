@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -120,6 +121,8 @@ internal fun FastScroller(
             Box(
                 Modifier
                     .offset { IntOffset(bubbleX.roundToInt(), bubbleY.roundToInt()) }
+                    // Wider than the strip: escape its width constraint instead of being squeezed into it.
+                    .wrapContentSize(Alignment.TopStart, unbounded = true)
                     .size(BubbleSize)
                     .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                 contentAlignment = Alignment.Center,
