@@ -9,6 +9,7 @@ import dev.zacsweers.metro.SingleIn
 import io.github.jgoedde.pielauncher.core.Clock
 import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.platform.AppLauncher
+import io.github.jgoedde.pielauncher.platform.AppShortcuts
 import io.github.jgoedde.pielauncher.platform.AppsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
@@ -18,6 +19,7 @@ interface AppGraph {
     val clock: Clock
     val appsRepository: AppsRepository
     val appLauncher: AppLauncher
+    val appShortcuts: AppShortcuts
     val iconLoader: IconLoader
 
     @Provides

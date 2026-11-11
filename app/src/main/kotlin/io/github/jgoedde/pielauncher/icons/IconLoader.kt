@@ -1,5 +1,7 @@
 package io.github.jgoedde.pielauncher.icons
 
+import android.content.pm.LauncherApps
+import android.content.pm.ShortcutInfo
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -19,7 +21,9 @@ import kotlinx.coroutines.withContext
  */
 @SingleIn(AppScope::class)
 @Inject
-class IconLoader {
+class IconLoader(
+    private val launcherApps: LauncherApps,
+) {
     private val cache = LruCache<Pair<LauncherApp, Int>, ImageBitmap>(MAX_ICONS)
 
     fun cached(
@@ -37,6 +41,18 @@ class IconLoader {
                 .toBitmap(sizePx, sizePx)
                 .asImageBitmap()
                 .also { cache.put(app to sizePx, it) }
+        }
+
+    /** A Shortcut's own icon, uncached (menus are short-lived); null when it has none. */
+    suspend fun shortcutIcon(
+        shortcut: ShortcutInfo,
+        sizePx: Int,
+    ): ImageBitmap? =
+        withContext(Dispatchers.IO) {
+            launcherApps
+                .getShortcutIconDrawable(shortcut, 0)
+                ?.toBitmap(sizePx, sizePx)
+                ?.asImageBitmap()
         }
 
     private companion object {
