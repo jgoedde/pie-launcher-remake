@@ -40,7 +40,7 @@ _Avoid_: Wheel, radial menu
 
 **Layer**:
 A named, colored set of Pie Items shown together in the Pie; one Layer is the Base Layer shown when the Pie opens.
-_Avoid_: Category, folder, level
+_Avoid_: Category, folder, level, sub-pie
 
 **Base Layer**:
 The Layer the Pie shows when it opens.
