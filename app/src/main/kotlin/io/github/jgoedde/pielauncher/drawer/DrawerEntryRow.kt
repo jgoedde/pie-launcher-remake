@@ -3,7 +3,6 @@ package io.github.jgoedde.pielauncher.drawer
 import android.content.pm.ShortcutInfo
 import android.util.DisplayMetrics
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -35,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -52,6 +49,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
+import io.github.jgoedde.pielauncher.icons.LauncherIcon
+import io.github.jgoedde.pielauncher.icons.LauncherIconImage
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import io.github.jgoedde.pielauncher.platform.PinnedShortcut
 import kotlinx.coroutines.launch
@@ -241,10 +240,10 @@ private fun AppIcon(
     iconLoader: IconLoader,
 ) {
     val sizePx = IconSize.toPx()
-    val icon: ImageBitmap? by produceState(iconLoader.cached(app, sizePx), app, sizePx) {
-        if (value == null) value = iconLoader.originalIcon(app, sizePx)
+    val icon: LauncherIcon? by produceState(iconLoader.cached(app, sizePx), app, sizePx) {
+        if (value == null) value = iconLoader.appIcon(app, sizePx)
     }
-    IconBox(icon, IconSize)
+    LauncherIconImage(icon, IconSize)
 }
 
 /** The Shortcut's own icon with a small badge of the owning app at its lower end corner. */
@@ -256,20 +255,16 @@ private fun PinnedShortcutIcon(
     val sizePx = IconSize.toPx()
     val badgePx = OwnerBadgeSize.toPx()
     val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
-    val icon: ImageBitmap? by produceState(iconLoader.cached(shortcut, sizePx), shortcut, sizePx) {
+    val icon: LauncherIcon? by produceState(iconLoader.cached(shortcut, sizePx), shortcut, sizePx) {
         if (value == null) value = iconLoader.pinnedShortcutIcon(shortcut, sizePx, densityDpi)
     }
-    val owner: ImageBitmap? by produceState<ImageBitmap?>(null, shortcut.packageName, shortcut.user, badgePx) {
+    val owner: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut.packageName, shortcut.user, badgePx) {
         value = iconLoader.ownerIcon(shortcut.packageName, shortcut.user, badgePx)
     }
     Box(Modifier.size(IconSize)) {
-        IconBox(icon, IconSize)
+        LauncherIconImage(icon, IconSize)
         owner?.let {
-            Image(
-                it,
-                contentDescription = null,
-                modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(OwnerBadgeSize),
-            )
+            LauncherIconImage(it, OwnerBadgeSize, Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp))
         }
     }
 }
@@ -281,20 +276,10 @@ private fun ShortcutIcon(
 ) {
     val sizePx = MenuIconSize.toPx()
     val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
-    val icon: ImageBitmap? by produceState<ImageBitmap?>(null, shortcut, sizePx) {
+    val icon: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut, sizePx) {
         value = iconLoader.shortcutIcon(shortcut, sizePx, densityDpi)
     }
-    IconBox(icon, MenuIconSize)
-}
-
-@Composable
-private fun IconBox(
-    icon: ImageBitmap?,
-    size: Dp,
-) {
-    Box(Modifier.size(size)) {
-        icon?.let { Image(it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
-    }
+    LauncherIconImage(icon, MenuIconSize)
 }
 
 @Composable
