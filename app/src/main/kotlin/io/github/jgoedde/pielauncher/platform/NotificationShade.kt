@@ -19,16 +19,26 @@ class NotificationShade(
 ) {
     private var failureLogged = false
 
+    /** Opens the notification shade, animated; does nothing if the platform refuses. */
     fun expand() {
-        try {
-            val statusBar = application.getSystemService(StatusBarManager::class.java)
-            StatusBarManager::class.java.getMethod("expandNotificationsPanel").invoke(statusBar)
-        } catch (e: Exception) {
-            if (!failureLogged) {
-                failureLogged = true
-                Log.w(TAG, "Cannot expand the notification shade; swipe-down stays inert", e)
-            }
+        val statusBar = application.getSystemService(StatusBarManager::class.java)
+        if (statusBar == null) {
+            logFailureOnce(null)
+            return
         }
+        try {
+            StatusBarManager::class.java.getMethod("expandNotificationsPanel").invoke(statusBar)
+        } catch (e: ReflectiveOperationException) {
+            logFailureOnce(e)
+        } catch (e: SecurityException) {
+            logFailureOnce(e)
+        }
+    }
+
+    private fun logFailureOnce(cause: Throwable?) {
+        if (failureLogged) return
+        failureLogged = true
+        Log.w(TAG, "Cannot expand the notification shade; swipe-down stays inert", cause)
     }
 
     private companion object {

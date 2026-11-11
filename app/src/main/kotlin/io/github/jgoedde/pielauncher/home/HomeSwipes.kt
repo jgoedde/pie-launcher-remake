@@ -15,7 +15,7 @@ import io.github.jgoedde.pielauncher.core.home.ShadeSwipe
 import io.github.jgoedde.pielauncher.drawer.DrawerState
 
 /**
- * Vertical swipes on the home surface outside the Pie Zone. Once a drag crosses touch slop it is
+ * Vertical swipes in a Widget Zone. Once a drag crosses touch slop it is
  * either a swipe down that opens the notification shade (see [ShadeSwipe]; the rest of the gesture
  * is swallowed) or it moves the App Drawer with the finger and settles it on release.
  */
@@ -24,28 +24,28 @@ fun Modifier.homeSwipes(
     drawer: DrawerState,
     onSwipeDown: () -> Unit,
 ): Modifier {
-    val swipeDown by rememberUpdatedState(onSwipeDown)
+    val currentOnSwipeDown by rememberUpdatedState(onSwipeDown)
     return pointerInput(drawer) {
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
+            val down = awaitFirstDown()
             var overSlop = 0f
-            val start =
+            val slopChange =
                 awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
                     change.consume()
                     overSlop = over
                 } ?: return@awaitEachGesture
-            val travel = start.position - down.position
+            val travel = slopChange.position - down.position
             if (!drawer.isShown && ShadeSwipe.opensShade(travel.x, travel.y, viewConfiguration.touchSlop)) {
-                swipeDown()
-                verticalDrag(start.id) { it.consume() }
+                currentOnSwipeDown()
+                verticalDrag(slopChange.id) { it.consume() }
                 return@awaitEachGesture
             }
             val velocity = VelocityTracker()
             velocity.addPointerInputChange(down)
-            velocity.addPointerInputChange(start)
+            velocity.addPointerInputChange(slopChange)
             drawer.dragBy(overSlop)
             val completed =
-                verticalDrag(start.id) { change ->
+                verticalDrag(slopChange.id) { change ->
                     velocity.addPointerInputChange(change)
                     drawer.dragBy(change.position.y - change.previousPosition.y)
                     change.consume()

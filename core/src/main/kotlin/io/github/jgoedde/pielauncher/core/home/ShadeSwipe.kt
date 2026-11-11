@@ -3,8 +3,7 @@ package io.github.jgoedde.pielauncher.core.home
 import kotlin.math.abs
 
 /**
- * Whether a vertical drag on the home surface (outside the Pie Zone) pulls down the notification
- * shade, decided once when the drag crosses touch slop (Launcher3 `StatusBarTouchController`).
+ * Whether a vertical drag in a Widget Zone pulls down the notification shade, decided once when the drag crosses touch slop (Launcher3 `StatusBarTouchController`).
  */
 object ShadeSwipe {
     /**
