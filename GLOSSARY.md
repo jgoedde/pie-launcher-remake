@@ -47,5 +47,15 @@ The short dwell time a finger must rest on a Pie Item before a Layer Switch fire
 _Avoid_: Throttle, debounce
 
 **Shortcut**:
-An app-provided action (static, dynamic or pinned) that launches a specific part of an app.
+An app-provided action (static, dynamic or pinned) that launches a specific part of an app; pinned Shortcuts include browser-installed PWAs.
 _Avoid_: Deep link, quick action
+
+## Configuration
+
+**Pie Config**:
+The user-authored JSON document that defines all Layers and their Pie Items; imported as a file.
+_Avoid_: Settings, layer config
+
+**Inventory**:
+A launcher-exported listing of every launchable app and Shortcut with the identifiers a Pie Config can reference.
+_Avoid_: App list, catalog
