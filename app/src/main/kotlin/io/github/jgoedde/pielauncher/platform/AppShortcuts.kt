@@ -15,7 +15,7 @@ class AppShortcuts(
 ) {
     /**
      * The enabled Shortcuts of [app]'s activity: manifest ones first, then dynamic ones, each by
-     * the app's rank. Empty while the launcher is not the default home app (no Shortcut access).
+     * the app's rank, at most [MAX_SHORTCUTS]. Empty while the launcher is not the default home app (no Shortcut access).
      */
     suspend fun of(app: LauncherApp): List<ShortcutInfo> =
         withContext(Dispatchers.IO) {
@@ -30,6 +30,7 @@ class AppShortcuts(
                     .orEmpty()
                     .filter { it.isEnabled }
                     .sortedWith(compareBy({ !it.isDeclaredInManifest }, { it.rank }))
+                    .take(MAX_SHORTCUTS)
             } catch (e: SecurityException) {
                 Log.w(TAG, "No Shortcut access for ${app.componentName}", e)
                 emptyList()
@@ -41,5 +42,8 @@ class AppShortcuts(
 
     private companion object {
         const val TAG = "AppShortcuts"
+
+        /** Some apps publish 10 or more; menus show only the app's top ones. */
+        const val MAX_SHORTCUTS = 5
     }
 }

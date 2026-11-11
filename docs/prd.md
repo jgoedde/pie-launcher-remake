@@ -111,7 +111,7 @@ The Pie is not available in Edit Mode.
 
 ### 4.6 Shortcut list
 
-- When the Hover Delay elapses on an app item, a list card (Fly-Pie style) opens beside the icon with that app's Shortcuts (manifest and dynamic, as `LauncherApps.getShortcuts` returns them for the activity).
+- When the Hover Delay elapses on an app item, a list card (Fly-Pie style) opens beside the icon with that app's Shortcuts (manifest and dynamic, as `LauncherApps.getShortcuts` returns them for the activity), capped like the App Drawer menu (section 6.6).
 - It opens toward the side with room, horizontally and vertically. Example: Pie opened at the bottom of the Pie Zone with the lowest item hovered → the list opens upward.
 - The list stays open while the thumb travels to it. Releasing on a row launches it. Moving over another Pie Item or back into the centre closes it.
 
@@ -200,6 +200,7 @@ Source: [How does the App Drawer behave?](https://github.com/jgoedde/pie-launche
 ### 6.6 Long-press menu
 
 - App: its Shortcuts first, then **App info**, then **Uninstall** (hidden for system apps).
+- At most 5 Shortcuts: manifest Shortcuts before dynamic ones, each by the app's rank; the rest are not shown.
 - Pinned Shortcut: **Remove** (section 7.5) and **App info** of the owning app.
 
 ## 7. Widgets
