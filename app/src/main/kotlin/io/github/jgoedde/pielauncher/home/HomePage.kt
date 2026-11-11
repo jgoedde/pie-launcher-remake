@@ -32,12 +32,13 @@ object HomePageLayout {
  * The Home Page, top to bottom: upper Widget Zone (remaining height), Pie Zone, lower Widget
  * Zone. Everything sits inside the mandatory system gesture insets, so touches in those strips
  * never reach the launcher. In either Widget Zone a swipe up drags the App Drawer open and a swipe
- * down calls [onSwipeDown] (the notification shade).
+ * down calls [onSwipeDown] (the notification shade). [pieZone] carries the Pie's touch handling.
  */
 @Composable
 fun HomePage(
     drawer: DrawerState,
     onSwipeDown: () -> Unit,
+    pieZone: Modifier,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(
@@ -48,16 +49,16 @@ fun HomePage(
         val cell = with(LocalDensity.current) { CellGrid.cellSizeFor(constraints.maxWidth.toFloat()).toDp() }
         Column(Modifier.fillMaxSize()) {
             WidgetZone(Modifier.weight(1f).homeSwipes(drawer, onSwipeDown))
-            PieZone()
+            PieZone(pieZone)
             WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).homeSwipes(drawer, onSwipeDown))
         }
     }
 }
 
-/** Invisible at rest; the Pie will live here. Swipes here never open the Drawer or the shade. */
+/** Invisible at rest; a touch-down here opens the Pie. Swipes here never open the Drawer or the shade. */
 @Composable
-private fun PieZone() {
-    Spacer(Modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight))
+private fun PieZone(modifier: Modifier) {
+    Spacer(modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight))
 }
 
 /** An area laid out on the 4-column [CellGrid]; empty until widgets arrive. */

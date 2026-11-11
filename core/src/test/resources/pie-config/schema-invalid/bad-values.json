@@ -1,0 +1,3 @@
+{ "version": 1, "baseLayer": "Home", "layers": [{ "id": "home", "name": "", "color": "red", "icon": "Bad-Icon", "items": [
+  { "type": "app", "package": "nodots" }, { "type": "shortcut", "package": "com.example.app", "shortcutId": "" }, { "type": "widget" }
+] }] }

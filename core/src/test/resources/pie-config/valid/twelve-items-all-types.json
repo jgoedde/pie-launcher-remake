@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../../spec/pie-config.schema.json",
+  "version": 1,
+  "baseLayer": "a",
+  "layers": [
+    {
+      "id": "a",
+      "name": "A",
+      "color": "#00ff7F",
+      "icon": "music_note",
+      "items": [
+        { "type": "app", "package": "com.example.one" },
+        { "type": "app", "package": "com.example.two", "activity": "com.example.two.Main" },
+        { "type": "shortcut", "package": "org.mozilla.firefox", "shortcutId": "https://x.example/?a=1&b=2" },
+        { "type": "layer", "layer": "b" },
+        { "type": "app", "package": "com.example.five" },
+        { "type": "app", "package": "com.example.six" },
+        { "type": "app", "package": "com.example.seven" },
+        { "type": "app", "package": "com.example.eight" },
+        { "type": "app", "package": "com.example.nine" },
+        { "type": "app", "package": "com.example.ten" },
+        { "type": "app", "package": "com.example.eleven" },
+        { "type": "app", "package": "com.example.twelve" }
+      ]
+    },
+    { "id": "b", "name": "B", "color": "secondary", "items": [{ "type": "layer", "layer": "a" }] }
+  ]
+}

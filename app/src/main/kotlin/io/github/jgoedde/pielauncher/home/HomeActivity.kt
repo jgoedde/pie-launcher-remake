@@ -45,6 +45,10 @@ import io.github.jgoedde.pielauncher.drawer.DrawerEntry
 import io.github.jgoedde.pielauncher.drawer.DrawerEntryActions
 import io.github.jgoedde.pielauncher.drawer.DrawerViewModel
 import io.github.jgoedde.pielauncher.drawer.rememberDrawerState
+import io.github.jgoedde.pielauncher.pie.PieOverlay
+import io.github.jgoedde.pielauncher.pie.PieViewModel
+import io.github.jgoedde.pielauncher.pie.pieTouches
+import io.github.jgoedde.pielauncher.pie.rememberPieController
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import io.github.jgoedde.pielauncher.platform.PinnedShortcut
 import io.github.jgoedde.pielauncher.platform.ShortcutPins
@@ -65,6 +69,18 @@ class HomeActivity : ComponentActivity() {
                     pinnedShortcuts = graph.appsRepository.pinnedShortcuts,
                     newBadges = graph.newBadges.active,
                     pendingRemovals = graph.shortcutPins.pendingRemovals,
+                )
+            }
+        }
+    }
+
+    private val pieViewModel: PieViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                PieViewModel(
+                    config = graph.pieConfigStore.config,
+                    apps = graph.appsRepository.apps,
+                    resolver = graph.pieItemResolver,
                 )
             }
         }
@@ -101,6 +117,8 @@ class HomeActivity : ComponentActivity() {
                 val snackbars = remember { SnackbarHostState() }
                 val scope = rememberCoroutineScope()
                 val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close, scope, snackbars) }
+                val pie = rememberPieController()
+                LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
 
                 LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
 
@@ -120,13 +138,18 @@ class HomeActivity : ComponentActivity() {
                         .onSizeChanged { drawer.travelPx = it.height.toFloat() }
                         .excludesBackGestureAtEdges(enabled = !drawer.isShown),
                 ) {
-                    HomePage(drawer, onSwipeDown = graph.notificationShade::expand)
+                    HomePage(
+                        drawer,
+                        onSwipeDown = graph.notificationShade::expand,
+                        pieZone = Modifier.pieTouches(pie, onLaunch = { graph.appLauncher.launch(it.app) }),
+                    )
                     AppDrawer(
                         state = drawer,
                         entries = drawerEntries,
                         iconLoader = graph.iconLoader,
                         actions = drawerActions,
                     )
+                    PieOverlay(pie, graph.iconLoader)
                     SnackbarHost(
                         snackbars,
                         Modifier

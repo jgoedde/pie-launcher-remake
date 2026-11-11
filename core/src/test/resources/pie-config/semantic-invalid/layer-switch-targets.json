@@ -1,0 +1,3 @@
+{ "version": 1, "baseLayer": "home", "layers": [{ "id": "home", "name": "Home", "items": [
+  { "type": "layer", "layer": "home" }, { "type": "layer", "layer": "gone" }
+] }] }

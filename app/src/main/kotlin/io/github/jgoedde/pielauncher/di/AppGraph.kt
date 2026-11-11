@@ -8,9 +8,11 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.config.PieConfigStore
 import io.github.jgoedde.pielauncher.core.Clock
 import io.github.jgoedde.pielauncher.drawer.NewBadges
 import io.github.jgoedde.pielauncher.icons.IconLoader
+import io.github.jgoedde.pielauncher.pie.PieItemResolver
 import io.github.jgoedde.pielauncher.platform.AppLauncher
 import io.github.jgoedde.pielauncher.platform.AppShortcuts
 import io.github.jgoedde.pielauncher.platform.AppsRepository
@@ -30,6 +32,8 @@ interface AppGraph {
     val shortcutPins: ShortcutPins
     val newBadges: NewBadges
     val notificationShade: NotificationShade
+    val pieConfigStore: PieConfigStore
+    val pieItemResolver: PieItemResolver
     val appScope: CoroutineScope
 
     @Provides

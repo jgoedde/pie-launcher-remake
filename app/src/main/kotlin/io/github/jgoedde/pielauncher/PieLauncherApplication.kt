@@ -13,5 +13,7 @@ class PieLauncherApplication : Application() {
         graph = createGraphFactory<AppGraph.Factory>().create(this)
         // Starts listening for installs right away, so they get their New Badge.
         graph.newBadges
+        // Decodes the Pie Config (or writes the Default Config on first start) before the Pie is needed.
+        graph.pieConfigStore
     }
 }
