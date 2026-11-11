@@ -5,16 +5,20 @@ An Android home-screen launcher where apps are opened almost exclusively through
 ## Home screen
 
 **Pie Zone**:
-The widget-free area in the lower-middle of the home screen, placed for easy thumb reach, where a touch-down summons the Pie.
+The widget-free area in the lower-middle of the Home Page, placed for easy thumb reach, where a touch-down summons the Pie.
 _Avoid_: Reserved zone, trigger area
 
 **Widget Zone**:
-One of the two areas above and below the Pie Zone that hold widgets and other conventional launcher content.
+An area of a Page that holds widgets on a cell grid: the Home Page has two, above and below the Pie Zone; every other Page is one Widget Zone filling its height.
 _Avoid_: Reserved zone
 
 **Page**:
-One horizontally swipeable home-screen screen; every Page has the Pie Zone in the same position.
+One horizontally swipeable home-screen screen.
 _Avoid_: Screen, workspace
+
+**Home Page**:
+The leftmost Page, which cannot be removed and is the only Page with a Pie Zone; pressing Home returns to it.
+_Avoid_: Default page, main screen
 
 **App Drawer**:
 The searchable, alphabetical list of all launchable apps and pinned Shortcuts, as known from standard launchers.
