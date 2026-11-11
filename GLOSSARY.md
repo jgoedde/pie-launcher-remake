@@ -62,6 +62,10 @@ _Avoid_: Loading indicator, progress ring
 The short dwell time a finger must rest on a Pie Item before a Layer Switch fires or an app's Shortcuts open.
 _Avoid_: Throttle, debounce
 
+**Unavailable Item**:
+A Pie Item whose target app or Shortcut is currently missing from the device; it keeps its place in the Layer, shown greyed out, and becomes usable again when the target returns.
+_Avoid_: Dangling item, broken item, dead link
+
 **Shortcut**:
 An app-provided action (static, dynamic or pinned) that launches a specific part of an app; pinned Shortcuts include browser-installed PWAs.
 _Avoid_: Deep link, quick action
@@ -69,8 +73,12 @@ _Avoid_: Deep link, quick action
 ## Configuration
 
 **Pie Config**:
-The user-authored JSON document that defines all Layers and their Pie Items; imported as a file.
+The JSON document that defines all Layers, their Pie Items and which Layer is the Base Layer; authored by the user and imported as a file, or the Default Config until the first import.
 _Avoid_: Settings, layer config
+
+**Default Config**:
+The Pie Config the launcher generates on first start, a single Base Layer of common apps, so the Pie works before anything is imported.
+_Avoid_: Fallback config, starter config
 
 **Inventory**:
 A launcher-exported listing of every launchable app and Shortcut with the identifiers a Pie Config can reference.

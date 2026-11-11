@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jgoedde/pie-launcher-remake/main/spec/pie-config.schema.json",
+  "title": "Pie Config",
+  "description": "Defines all Layers and their Pie Items. Structural rules live here; semantic rules (listed in $comment) are enforced by the launcher on import.",
+  "$comment": "Semantic import ERRORS (import rejected, nothing changes): baseLayer names no existing Layer; duplicate Layer ids; a Layer Switch targets an unknown Layer or its own Layer; an icon is not a Material Symbols Rounded name; version is higher than supported. Semantic import WARNINGS (import proceeds, list shown): an app/activity/shortcut reference does not resolve on this device; a Layer is unreachable from the Base Layer; the same target appears twice in one Layer; an app item without activity names a package with several launcher activities (the warning names the one launched and the alternatives). All errors are reported at once with their JSON path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "baseLayer", "layers"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "description": "Schema version of this file. The launcher rejects versions higher than it supports.",
+      "const": 1
+    },
+    "baseLayer": {
+      "description": "Id of the Layer the Pie shows when it opens.",
+      "$ref": "#/$defs/layerId"
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/layer" }
+    }
+  },
+  "$defs": {
+    "layerId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
+    },
+    "color": {
+      "description": "Fixed hex colour, or a Monet role that follows the wallpaper.",
+      "oneOf": [
+        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        { "enum": ["primary", "secondary", "tertiary"] }
+      ]
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "items"],
+      "properties": {
+        "id": { "$ref": "#/$defs/layerId" },
+        "name": {
+          "description": "Human name; shown in import messages and exports, not in the Pie.",
+          "type": "string",
+          "minLength": 1
+        },
+        "color": {
+          "description": "Layer colour, used e.g. for the Progress Disc and for Layer Switches pointing here.",
+          "$ref": "#/$defs/color",
+          "default": "primary"
+        },
+        "icon": {
+          "description": "Material Symbols Rounded name shown on Layer Switches that target this Layer.",
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "default": "layers"
+        },
+        "items": {
+          "description": "Pie Items, placed clockwise starting at 12 o'clock.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": { "$ref": "#/$defs/item" }
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["app", "layer", "shortcut"] }
+      },
+      "oneOf": [
+        { "$ref": "#/$defs/appItem" },
+        { "$ref": "#/$defs/layerSwitchItem" },
+        { "$ref": "#/$defs/shortcutItem" }
+      ]
+    },
+    "appItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "package"],
+      "properties": {
+        "type": { "const": "app" },
+        "package": { "$ref": "#/$defs/packageName" },
+        "activity": {
+          "description": "Fully qualified launcher activity class. Omitted: launch what getLaunchIntentForPackage returns.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "layerSwitchItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "layer"],
+      "properties": {
+        "type": { "const": "layer" },
+        "layer": { "$ref": "#/$defs/layerId" }
+      }
+    },
+    "shortcutItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "package", "shortcutId"],
+      "properties": {
+        "type": { "const": "shortcut" },
+        "package": { "$ref": "#/$defs/packageName" },
+        "shortcutId": {
+          "description": "Opaque id from the Inventory (Vanadium: random UUID per add; Firefox: manifest start_url).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
