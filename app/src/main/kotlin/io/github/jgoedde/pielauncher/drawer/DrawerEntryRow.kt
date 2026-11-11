@@ -6,6 +6,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,14 +33,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
@@ -84,7 +94,17 @@ internal fun DrawerEntryRow(
     var menuShortcuts by remember { mutableStateOf<List<ShortcutInfo>?>(null) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
-    Box {
+    // Where the current press went down, in this row's coordinates; the menu opens there.
+    var pressAt by remember { mutableStateOf(Offset.Zero) }
+    var rowSize by remember { mutableStateOf(IntSize.Zero) }
+    Box(
+        Modifier
+            .onSizeChanged { rowSize = it }
+            .pointerInput(Unit) {
+                // Observe only: the clickable below still handles the press.
+                awaitEachGesture { pressAt = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
+            },
+    ) {
         Row(
             modifier =
                 Modifier
@@ -127,9 +147,10 @@ internal fun DrawerEntryRow(
         }
         menuShortcuts?.let { shortcuts ->
             val dismiss = { menuShortcuts = null }
+            val offset = menuOffset(pressAt, rowSize)
             when (entry) {
-                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, onDismiss = dismiss)
-                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, onDismiss = dismiss)
+                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, offset, onDismiss = dismiss)
+                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, offset, onDismiss = dismiss)
             }
         }
     }
@@ -139,13 +160,14 @@ internal fun DrawerEntryRow(
 private fun PinnedShortcutMenu(
     entry: DrawerEntry.Shortcut,
     actions: DrawerEntryActions,
+    offset: DpOffset,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+    DropdownMenu(expanded = true, onDismissRequest = onDismiss, offset = offset) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.drawer_remove)) },
             onClick = { run { actions.remove(entry.shortcut) } },
@@ -163,13 +185,14 @@ private fun AppMenu(
     shortcuts: List<ShortcutInfo>,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
+    offset: DpOffset,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+    DropdownMenu(expanded = true, onDismissRequest = onDismiss, offset = offset) {
         shortcuts.forEach { shortcut ->
             DropdownMenuItem(
                 text = {
@@ -195,6 +218,21 @@ private fun AppMenu(
             )
         }
     }
+}
+
+/**
+ * [DropdownMenu] measures its offset from the anchor's bottom-start corner (start is the right
+ * edge in RTL); turn the press position into that so the menu opens under the finger. The menu
+ * still flips or shifts on its own when there is no room.
+ */
+@Composable
+private fun menuOffset(
+    press: Offset,
+    rowSize: IntSize,
+): DpOffset {
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val x = if (rtl) rowSize.width - press.x else press.x
+    return with(LocalDensity.current) { DpOffset(x.toDp(), (press.y - rowSize.height).toDp()) }
 }
 
 @Composable
