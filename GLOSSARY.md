@@ -20,6 +20,10 @@ _Avoid_: Screen, workspace
 The leftmost Page, which cannot be removed and is the only Page with a Pie Zone; pressing Home returns to it.
 _Avoid_: Default page, main screen
 
+**Edit Mode**:
+The home-screen state while a widget is being moved or resized; the Pie Zone shows as blocked, the Page indicator is visible, and Home or back leaves it.
+_Avoid_: Jiggle mode, customise mode
+
 **App Drawer**:
 The searchable, alphabetical list of all launchable apps and pinned Shortcuts, as known from standard launchers.
 _Avoid_: App grid, all-apps
