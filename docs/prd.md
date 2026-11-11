@@ -202,6 +202,8 @@ Source: [How does the App Drawer behave?](https://github.com/jgoedde/pie-launche
 - App: its Shortcuts first, then **App info**, then **Uninstall** (hidden for system apps).
 - At most 5 Shortcuts: manifest Shortcuts before dynamic ones, each by the app's rank; the rest are not shown.
 - Pinned Shortcut: **Remove** (section 7.5) and **App info** of the owning app.
+- Placement: the menu opens above and to the left of the touch point, away from a right thumb. Its end edge sits at the touch X and its bottom edge on the pressed row's top edge, so the row stays visible. Physical direction, also in RTL; no handedness setting.
+- No room above: it flips below the row, still opening to the left. No room to the left: it shifts right until it fits. No room above or below: it clamps to the window edges. Item order stays the same either way.
 
 ## 7. Widgets
 
