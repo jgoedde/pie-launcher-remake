@@ -1,7 +1,7 @@
 package io.github.jgoedde.pielauncher
 
 import android.app.Application
-import dev.zacsweers.metro.createGraph
+import dev.zacsweers.metro.createGraphFactory
 import io.github.jgoedde.pielauncher.di.AppGraph
 
 class PieLauncherApplication : Application() {
@@ -10,6 +10,6 @@ class PieLauncherApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        graph = createGraph<AppGraph>()
+        graph = createGraphFactory<AppGraph.Factory>().create(this)
     }
 }
