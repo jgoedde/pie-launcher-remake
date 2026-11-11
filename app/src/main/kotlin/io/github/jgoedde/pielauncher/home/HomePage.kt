@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.drawer.DrawerState
-import io.github.jgoedde.pielauncher.drawer.dragsDrawer
 
 /** Home Page dimensions. Code constants by design, never configuration. */
 object HomePageLayout {
@@ -32,11 +31,13 @@ object HomePageLayout {
 /**
  * The Home Page, top to bottom: upper Widget Zone (remaining height), Pie Zone, lower Widget
  * Zone. Everything sits inside the mandatory system gesture insets, so touches in those strips
- * never reach the launcher. A swipe up in either Widget Zone drags the App Drawer open.
+ * never reach the launcher. In either Widget Zone a swipe up drags the App Drawer open and a swipe
+ * down calls [onSwipeDown] (the notification shade).
  */
 @Composable
 fun HomePage(
     drawer: DrawerState,
+    onSwipeDown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(
@@ -46,14 +47,14 @@ fun HomePage(
     ) {
         val cell = with(LocalDensity.current) { CellGrid.cellSizeFor(constraints.maxWidth.toFloat()).toDp() }
         Column(Modifier.fillMaxSize()) {
-            WidgetZone(Modifier.weight(1f).dragsDrawer(drawer))
+            WidgetZone(Modifier.weight(1f).homeSwipes(drawer, onSwipeDown))
             PieZone()
-            WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).dragsDrawer(drawer))
+            WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).homeSwipes(drawer, onSwipeDown))
         }
     }
 }
 
-/** Invisible at rest; the Pie will live here. Swipes here never open the Drawer. */
+/** Invisible at rest; the Pie will live here. Swipes here never open the Drawer or the shade. */
 @Composable
 private fun PieZone() {
     Spacer(Modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight))
