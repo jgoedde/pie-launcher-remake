@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -240,8 +241,9 @@ private fun AppIcon(
     iconLoader: IconLoader,
 ) {
     val sizePx = IconSize.toPx()
-    val icon: LauncherIcon? by produceState(iconLoader.cached(app, sizePx), app, sizePx) {
-        if (value == null) value = iconLoader.appIcon(app, sizePx)
+    val themed by iconLoader.themedIcons.collectAsState()
+    val icon: LauncherIcon? by produceState(iconLoader.cached(app, sizePx), app, sizePx, themed) {
+        value = iconLoader.appIcon(app, sizePx)
     }
     LauncherIconImage(icon, IconSize)
 }
@@ -255,10 +257,11 @@ private fun PinnedShortcutIcon(
     val sizePx = IconSize.toPx()
     val badgePx = OwnerBadgeSize.toPx()
     val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
-    val icon: LauncherIcon? by produceState(iconLoader.cached(shortcut, sizePx), shortcut, sizePx) {
-        if (value == null) value = iconLoader.pinnedShortcutIcon(shortcut, sizePx, densityDpi)
+    val themed by iconLoader.themedIcons.collectAsState()
+    val icon: LauncherIcon? by produceState(iconLoader.cached(shortcut, sizePx), shortcut, sizePx, themed) {
+        value = iconLoader.pinnedShortcutIcon(shortcut, sizePx, densityDpi)
     }
-    val owner: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut.packageName, shortcut.user, badgePx) {
+    val owner: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut.packageName, shortcut.user, badgePx, themed) {
         value = iconLoader.ownerIcon(shortcut.packageName, shortcut.user, badgePx)
     }
     Box(Modifier.size(IconSize)) {
@@ -276,7 +279,8 @@ private fun ShortcutIcon(
 ) {
     val sizePx = MenuIconSize.toPx()
     val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
-    val icon: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut, sizePx) {
+    val themed by iconLoader.themedIcons.collectAsState()
+    val icon: LauncherIcon? by produceState<LauncherIcon?>(null, shortcut, sizePx, themed) {
         value = iconLoader.shortcutIcon(shortcut, sizePx, densityDpi)
     }
     LauncherIconImage(icon, MenuIconSize)

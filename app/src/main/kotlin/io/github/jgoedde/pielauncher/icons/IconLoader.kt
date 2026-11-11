@@ -21,10 +21,17 @@ import io.github.jgoedde.pielauncher.core.icons.MaskKey
 import io.github.jgoedde.pielauncher.core.icons.MaskSource
 import io.github.jgoedde.pielauncher.core.icons.maskSource
 import io.github.jgoedde.pielauncher.platform.AppsRepository
+import io.github.jgoedde.pielauncher.platform.IconSettingsStore
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import io.github.jgoedde.pielauncher.platform.PinnedShortcut
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -38,6 +45,9 @@ import java.io.File
  * [LauncherApp] instance; the apps repository creates new instances after every package change.
  * Shortcut icons are cached per Shortcut version (its last-changed time). A package change also
  * drops that package's masks from both caches.
+ *
+ * With Themed Icons off every icon is an Original Icon, PWAs included (PRD 8.4); the switch is
+ * part of the in-memory key, and masks on disk are kept for when it is turned back on.
  */
 @SingleIn(AppScope::class)
 @Inject
@@ -46,13 +56,19 @@ class IconLoader(
     private val launcherApps: LauncherApps,
     private val userManager: UserManager,
     appsRepository: AppsRepository,
+    iconSettings: IconSettingsStore,
     appScope: CoroutineScope,
 ) {
+    /** The Themed Icons switch; null until the settings are read. Icons load again when it changes. */
+    val themedIcons: StateFlow<Boolean?> =
+        iconSettings.settings.map { it.themedIcons }.stateIn(appScope, SharingStarted.Eagerly, null)
+
     /** In-memory key: [item] is anything that changes whenever the icon may have changed. */
     private data class MemoryKey(
         val packageName: String,
         val item: Any,
         val sizePx: Int,
+        val themed: Boolean,
     )
 
     private val cache = LruCache<MemoryKey, LauncherIcon>(MAX_ICONS)
@@ -78,17 +94,21 @@ class IconLoader(
     fun cached(
         app: LauncherApp,
         sizePx: Int,
-    ): LauncherIcon? = cache[app.memoryKey(sizePx)]
+    ): LauncherIcon? = themedIcons.value?.let { cache[app.memoryKey(sizePx, it)] }
 
     suspend fun appIcon(
         app: LauncherApp,
         sizePx: Int,
-    ): LauncherIcon = cached(app, sizePx) ?: load(app.memoryKey(sizePx)) { activityIcon(app.info, sizePx) }
+    ): LauncherIcon {
+        val themed = themed()
+        val key = app.memoryKey(sizePx, themed)
+        return cache[key] ?: load(key) { activityIcon(app.info, sizePx, themed) }
+    }
 
     fun cached(
         shortcut: PinnedShortcut,
         sizePx: Int,
-    ): LauncherIcon? = cache[shortcut.info.memoryKey(sizePx, pinned = true)]
+    ): LauncherIcon? = themedIcons.value?.let { cache[shortcut.info.memoryKey(sizePx, pinned = true, it)] }
 
     /** A pinned Shortcut's own icon; null when it has none. */
     suspend fun pinnedShortcutIcon(
@@ -103,9 +123,10 @@ class IconLoader(
         user: UserHandle,
         sizePx: Int,
     ): LauncherIcon? {
-        val key = MemoryKey(packageName, "owner/$user", sizePx)
+        val themed = themed()
+        val key = MemoryKey(packageName, "owner/$user", sizePx, themed)
         return cache[key] ?: withContext(Dispatchers.IO) {
-            launcherApps.getActivityList(packageName, user).firstOrNull()?.let { info -> load(key) { activityIcon(info, sizePx) } }
+            launcherApps.getActivityList(packageName, user).firstOrNull()?.let { info -> load(key) { activityIcon(info, sizePx, themed) } }
         }
     }
 
@@ -116,7 +137,8 @@ class IconLoader(
         densityDpi: Int,
         pinned: Boolean = false,
     ): LauncherIcon? {
-        val key = shortcut.memoryKey(sizePx, pinned)
+        val themed = themed()
+        val key = shortcut.memoryKey(sizePx, pinned, themed)
         return cache[key] ?: withContext(Dispatchers.IO) {
             val drawable = launcherApps.getShortcutIconDrawable(shortcut, densityDpi) ?: return@withContext null
             val owner = if (pinned && shortcut.`package` in browserPackages()) IconOwner.Pwa else IconOwner.Shortcut
@@ -127,7 +149,7 @@ class IconLoader(
                     version = shortcut.lastChangedTimestamp.toString(),
                     sizePx = sizePx,
                 )
-            load(key) { render(drawable, owner, maskKey) }
+            load(key) { render(drawable, owner, maskKey, themed) }
         }
     }
 
@@ -136,9 +158,12 @@ class IconLoader(
         render: () -> LauncherIcon,
     ): LauncherIcon = withContext(Dispatchers.IO) { render().also { cache.put(key, it) } }
 
+    private suspend fun themed(): Boolean = themedIcons.filterNotNull().first()
+
     private fun activityIcon(
         info: LauncherActivityInfo,
         sizePx: Int,
+        themed: Boolean,
     ): LauncherIcon {
         val packageName = info.componentName.packageName
         val version =
@@ -157,16 +182,17 @@ class IconLoader(
                 sizePx = sizePx,
             )
         // The disk cache spares decoding the icon at all.
-        masks.read(maskKey)?.let { return it.themed() }
-        return render(info.getIcon(0), IconOwner.App, maskKey)
+        if (themed) masks.read(maskKey)?.let { return it.themed() }
+        return render(info.getIcon(0), IconOwner.App, maskKey, themed)
     }
 
     private fun render(
         drawable: Drawable,
         owner: IconOwner,
         key: MaskKey,
+        themed: Boolean,
     ): LauncherIcon {
-        val source = maskSource(owner, MonochromeIconFactory.traits(drawable))
+        val source = if (themed) maskSource(owner, MonochromeIconFactory.traits(drawable)) else MaskSource.Original
         if (source ==
             MaskSource.Original
         ) {
@@ -193,13 +219,17 @@ class IconLoader(
             ).mapTo(mutableSetOf()) { it.activityInfo.packageName }
             .also { browsers = it }
 
-    private fun LauncherApp.memoryKey(sizePx: Int) = MemoryKey(packageName, this, sizePx)
+    private fun LauncherApp.memoryKey(
+        sizePx: Int,
+        themed: Boolean,
+    ) = MemoryKey(packageName, this, sizePx, themed)
 
     /** A pinned Shortcut may be a PWA; the same Shortcut in an app's menu never is. */
     private fun ShortcutInfo.memoryKey(
         sizePx: Int,
         pinned: Boolean,
-    ) = MemoryKey(`package`, listOf(userHandle, id, lastChangedTimestamp, pinned), sizePx)
+        themed: Boolean,
+    ) = MemoryKey(`package`, listOf(userHandle, id, lastChangedTimestamp, pinned), sizePx, themed)
 
     private companion object {
         const val MAX_ICONS = 300
