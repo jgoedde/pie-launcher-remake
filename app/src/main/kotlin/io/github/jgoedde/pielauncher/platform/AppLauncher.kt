@@ -2,7 +2,6 @@ package io.github.jgoedde.pielauncher.platform
 
 import android.content.ActivityNotFoundException
 import android.content.pm.LauncherApps
-import android.graphics.Rect
 import android.util.Log
 import dev.zacsweers.metro.Inject
 
@@ -12,12 +11,9 @@ class AppLauncher(
     private val launcherApps: LauncherApps,
 ) {
     /** Returns false when the app could not be started (e.g. it was uninstalled a moment ago). */
-    fun launch(
-        app: LauncherApp,
-        sourceBounds: Rect? = null,
-    ): Boolean =
+    fun launch(app: LauncherApp): Boolean =
         try {
-            launcherApps.startMainActivity(app.componentName, app.info.user, sourceBounds, null)
+            launcherApps.startMainActivity(app.componentName, app.info.user, null, null)
             true
         } catch (e: ActivityNotFoundException) {
             Log.w(TAG, "Cannot launch ${app.componentName}", e)

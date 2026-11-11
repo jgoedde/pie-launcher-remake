@@ -3,6 +3,7 @@ package io.github.jgoedde.pielauncher.home
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
@@ -44,7 +46,7 @@ fun HomePage(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Vertical)),
     ) {
-        val cell = CellGrid.cellSizeFor(maxWidth.value).dp
+        val cell = with(LocalDensity.current) { CellGrid.cellSizeFor(constraints.maxWidth.toFloat()).toDp() }
         Column(Modifier.fillMaxSize()) {
             WidgetZone(Modifier.weight(1f).opensDrawer(drawer))
             PieZone()
@@ -59,15 +61,10 @@ private fun PieZone() {
     Spacer(Modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight))
 }
 
-/** An area on the 4-column [CellGrid]; empty until widgets arrive. */
+/** An area laid out on the 4-column [CellGrid]; empty until widgets arrive. */
 @Composable
-private fun WidgetZone(
-    modifier: Modifier,
-    content: @Composable (CellGrid) -> Unit = {},
-) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        content(CellGrid.of(maxWidth.value, maxHeight.value))
-    }
+private fun WidgetZone(modifier: Modifier) {
+    Box(modifier.fillMaxWidth())
 }
 
 @Composable

@@ -57,11 +57,11 @@ fun AppDrawer(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(state.isClosed) {
-        if (state.isClosed) listState.scrollToItem(0)
+    LaunchedEffect(state.isShown) {
+        if (!state.isShown) listState.scrollToItem(0)
     }
-    BackHandler(enabled = !state.isClosed) { state.close() }
-    if (state.progress == 0f) return
+    BackHandler(enabled = state.isShown) { state.close() }
+    if (!state.isShown) return
 
     val pullToClose = remember(state) { PullToCloseConnection(state) }
     Surface(

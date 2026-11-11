@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -29,7 +30,12 @@ class DrawerState internal constructor(
     /** The distance in px a drag must travel to open the Drawer fully: its height. */
     var travelPx = 1f
 
-    val isClosed: Boolean get() = progress == 0f && animation?.isActive != true
+    /**
+     * True from the moment the Drawer starts to show until it has settled closed again. A drag
+     * that reaches 0 without letting go keeps it shown, so the same gesture can pull it back up.
+     */
+    var isShown by mutableStateOf(false)
+        private set
 
     private var animation: Job? = null
 
@@ -37,6 +43,7 @@ class DrawerState internal constructor(
     fun dragBy(deltaY: Float) {
         animation?.cancel()
         progress = (progress - deltaY / travelPx).coerceIn(0f, 1f)
+        if (progress > 0f) isShown = true
     }
 
     /** [velocityY] in px/s, positive downwards. */
@@ -52,18 +59,22 @@ class DrawerState internal constructor(
 
     fun open() = animateTo(1f)
 
-    fun close() = animateTo(0f)
+    fun close() {
+        if (isShown) animateTo(0f)
+    }
 
     private fun animateTo(
         target: Float,
         initialVelocity: Float = 0f,
     ) {
         animation?.cancel()
+        if (target > 0f) isShown = true
         animation =
             scope.launch {
                 animate(progress, target, initialVelocity, spring(stiffness = STIFFNESS)) { value, _ ->
                     progress = value.coerceIn(0f, 1f)
                 }
+                if (progress == 0f) isShown = false
             }
     }
 

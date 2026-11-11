@@ -40,4 +40,12 @@ class CellGridTest {
         assertEquals(0, grid.rows)
         assertEquals(30f, grid.verticalPadding, 0f)
     }
+
+    @Test
+    fun `a zone sized to one cell but rounded down to whole pixels still holds that row`() {
+        // 1081 px wide -> 270.25 px cells; the zone was laid out as 270 px tall.
+        val grid = CellGrid.of(zoneWidth = 1081f, zoneHeight = 270f)
+
+        assertEquals(1, grid.rows)
+    }
 }

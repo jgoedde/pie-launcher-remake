@@ -1,5 +1,10 @@
 package io.github.jgoedde.pielauncher.platform
 
+import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.LauncherApps
 import android.os.Handler
 import android.os.Looper
@@ -23,11 +28,13 @@ import kotlinx.coroutines.flow.stateIn
  * The single source of launchable apps for the App Drawer, the Pie and the Inventory.
  *
  * Main profile only. The list is reloaded whenever `LauncherApps` reports a package change for
- * that profile, so installs and uninstalls show up immediately.
+ * that profile, so installs and uninstalls show up immediately, and on a system language change,
+ * so labels are re-read and the App Drawer re-sorts.
  */
 @SingleIn(AppScope::class)
 @Inject
 class AppsRepository(
+    private val application: Application,
     private val launcherApps: LauncherApps,
     appScope: CoroutineScope,
 ) {
@@ -40,7 +47,7 @@ class AppsRepository(
             .flowOn(Dispatchers.IO)
             .stateIn(appScope, SharingStarted.Eagerly, emptyList())
 
-    /** Emits once right away, then on every package change in the main profile. */
+    /** Emits once right away, then on every package change in the main profile and locale change. */
     private fun packageChanges() =
         callbackFlow {
             val callback =
@@ -76,8 +83,25 @@ class AppsRepository(
                         replacing: Boolean,
                     ) = changed(user)
                 }
+            val localeReceiver =
+                object : BroadcastReceiver() {
+                    override fun onReceive(
+                        context: Context,
+                        intent: Intent,
+                    ) {
+                        trySend(Unit)
+                    }
+                }
             launcherApps.registerCallback(callback, Handler(Looper.getMainLooper()))
+            application.registerReceiver(
+                localeReceiver,
+                IntentFilter(Intent.ACTION_LOCALE_CHANGED),
+                Context.RECEIVER_NOT_EXPORTED,
+            )
             trySend(Unit)
-            awaitClose { launcherApps.unregisterCallback(callback) }
+            awaitClose {
+                launcherApps.unregisterCallback(callback)
+                application.unregisterReceiver(localeReceiver)
+            }
         }
 }
