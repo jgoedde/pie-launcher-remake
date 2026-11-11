@@ -14,6 +14,7 @@ import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.platform.AppLauncher
 import io.github.jgoedde.pielauncher.platform.AppShortcuts
 import io.github.jgoedde.pielauncher.platform.AppsRepository
+import io.github.jgoedde.pielauncher.platform.IconSettingsStore
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.NotificationShade
 import io.github.jgoedde.pielauncher.platform.ShortcutPins
@@ -27,6 +28,7 @@ interface AppGraph {
     val appLauncher: AppLauncher
     val appShortcuts: AppShortcuts
     val iconLoader: IconLoader
+    val iconSettings: IconSettingsStore
     val shortcutPins: ShortcutPins
     val newBadges: NewBadges
     val notificationShade: NotificationShade
