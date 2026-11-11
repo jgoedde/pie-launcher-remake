@@ -1,6 +1,7 @@
 package io.github.jgoedde.pielauncher.drawer
 
 import android.content.pm.ShortcutInfo
+import android.util.DisplayMetrics
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,6 +42,7 @@ import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val IconSize = 48.dp
 private val MenuIconSize = 24.dp
@@ -166,8 +168,9 @@ private fun ShortcutIcon(
     iconLoader: IconLoader,
 ) {
     val sizePx = MenuIconSize.toPx()
+    val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
     val icon: ImageBitmap? by produceState<ImageBitmap?>(null, shortcut, sizePx) {
-        value = iconLoader.shortcutIcon(shortcut, sizePx)
+        value = iconLoader.shortcutIcon(shortcut, sizePx, densityDpi)
     }
     IconBox(icon, MenuIconSize)
 }

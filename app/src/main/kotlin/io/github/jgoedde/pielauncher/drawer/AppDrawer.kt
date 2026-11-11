@@ -68,7 +68,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppDrawer(
     state: DrawerState,
-    index: DrawerIndex,
+    entries: DrawerEntries,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
     modifier: Modifier = Modifier,
@@ -79,7 +79,7 @@ fun AppDrawer(
     val listState = rememberLazyListState()
     var query by remember { mutableStateOf("") }
     val searching = query.isNotBlank()
-    val entries = remember(index, query) { index.search.search(query) }
+    val results = remember(entries, query) { entries.search(query) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -113,18 +113,25 @@ fun AppDrawer(
                     listState.requestScrollToItem(0)
                     query = it
                 },
-                onGo = { if (searching) entries.firstOrNull()?.let(actions::launch) },
-                modifier = Modifier.focusRequester(focus),
+                onGo = { if (searching) results.firstOrNull()?.let(actions::launch) },
+                modifier = Modifier.dragsDrawer(state).focusRequester(focus),
             )
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (searching && entries.isEmpty()) {
-                    NoResults(query, Modifier.align(Alignment.Center))
+                if (searching && results.isEmpty()) {
+                    // Not scrollable, so it drags the Drawer itself; centred in the room above the keyboard.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .dragsDrawer(state)
+                            .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues()),
+                        contentAlignment = Alignment.Center,
+                    ) { NoResults(query) }
                 } else {
-                    EntryList(entries, listState, highlightFirst = searching, iconLoader, actions)
+                    EntryList(results, listState, highlightFirst = searching, iconLoader, actions)
                 }
                 if (!searching) {
                     FastScroller(
-                        letters = index.letters,
+                        letters = entries.letters,
                         onDragStart = { keyboard?.hide() },
                         onLetter = { letter -> scope.launch { listState.scrollToItem(letter.firstIndex) } },
                         modifier =

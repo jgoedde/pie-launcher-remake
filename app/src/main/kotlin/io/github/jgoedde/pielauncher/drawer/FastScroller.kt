@@ -66,8 +66,12 @@ internal fun FastScroller(
         // The letters are centred vertically; touches anywhere on the strip map onto them.
         val topPx = (constraints.maxHeight - letterHeightPx * letters.size) / 2f
 
+        // Read live, so a strip resizing mid-drag (the keyboard hiding) does not restart the gesture.
+        val geometry by rememberUpdatedState(topPx to letterHeightPx)
+
         fun select(y: Float) {
-            val i = ((y - topPx) / letterHeightPx).toInt().coerceIn(letters.indices)
+            val (top, height) = geometry
+            val i = ((y - top) / height).toInt().coerceIn(letters.indices)
             if (i == active) return
             active = i
             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
@@ -79,20 +83,23 @@ internal fun FastScroller(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(letters, topPx, letterHeightPx) {
+                    .pointerInput(letters) {
                         awaitEachGesture {
                             val down = awaitFirstDown()
                             down.consume()
-                            currentOnDragStart()
-                            select(down.position.y)
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!change.pressed) break
-                                if (change.positionChange().y != 0f) select(change.position.y)
-                                change.consume()
+                            try {
+                                currentOnDragStart()
+                                select(down.position.y)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    if (change.positionChange().y != 0f) select(change.position.y)
+                                    change.consume()
+                                }
+                            } finally {
+                                active = null
                             }
-                            active = null
                         }
                     },
         ) {

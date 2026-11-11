@@ -34,4 +34,9 @@ class AlphabetIndexTest {
             index("Calendar", "+Plus"),
         )
     }
+
+    @Test
+    fun `a letter that uppercases to several letters buckets under the first`() {
+        assertEquals(listOf(IndexLetter("S", 0)), index("ßtudio", "Signal"))
+    }
 }

@@ -47,10 +47,11 @@ class IconLoader(
     suspend fun shortcutIcon(
         shortcut: ShortcutInfo,
         sizePx: Int,
+        densityDpi: Int,
     ): ImageBitmap? =
         withContext(Dispatchers.IO) {
             launcherApps
-                .getShortcutIconDrawable(shortcut, 0)
+                .getShortcutIconDrawable(shortcut, densityDpi)
                 ?.toBitmap(sizePx, sizePx)
                 ?.asImageBitmap()
         }

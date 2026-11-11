@@ -2,6 +2,9 @@ package io.github.jgoedde.pielauncher.drawer
 
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -10,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -84,6 +88,15 @@ class DrawerState internal constructor(
         const val STIFFNESS = 600f
     }
 }
+
+/** A vertical drag here moves the Drawer with the finger and settles it on release. */
+@Composable
+fun Modifier.dragsDrawer(drawer: DrawerState): Modifier =
+    draggable(
+        state = rememberDraggableState { delta -> drawer.dragBy(delta) },
+        orientation = Orientation.Vertical,
+        onDragStopped = { velocity -> drawer.settle(velocity) },
+    )
 
 @Composable
 fun rememberDrawerState(): DrawerState {

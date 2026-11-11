@@ -31,9 +31,9 @@ class AppLauncher(
 
     /** Asks the system to uninstall [app]'s package; the system shows its own confirmation. */
     fun uninstall(app: LauncherApp): Boolean =
-        attempt("uninstall ${app.componentName.packageName}") {
+        attempt("uninstall ${app.packageName}") {
             application.startActivity(
-                Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.componentName.packageName, null))
+                Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.packageName, null))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }

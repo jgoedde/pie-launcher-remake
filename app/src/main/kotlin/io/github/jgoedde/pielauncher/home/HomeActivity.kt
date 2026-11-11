@@ -69,7 +69,7 @@ class HomeActivity : ComponentActivity() {
         setContent {
             PieLauncherTheme {
                 val drawer = rememberDrawerState()
-                val drawerIndex by drawerViewModel.index.collectAsStateWithLifecycle()
+                val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
                 val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close) }
 
                 LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
@@ -87,7 +87,7 @@ class HomeActivity : ComponentActivity() {
                     HomePage(drawer)
                     AppDrawer(
                         state = drawer,
-                        index = drawerIndex,
+                        entries = drawerEntries,
                         iconLoader = graph.iconLoader,
                         actions = drawerActions,
                     )

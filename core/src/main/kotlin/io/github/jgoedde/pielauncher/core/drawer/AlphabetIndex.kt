@@ -28,7 +28,7 @@ fun <T> alphabetIndex(
         if (first == null || !first.isLetter()) {
             if (other == null) other = i
         } else {
-            letters.putIfAbsent(first.toString().uppercase(locale), i)
+            letters.putIfAbsent(first.toString().uppercase(locale).take(1), i)
         }
     }
     val buckets = letters.map { (letter, index) -> IndexLetter(letter, index) }

@@ -22,7 +22,7 @@ class AppShortcuts(
             val query =
                 ShortcutQuery()
                     .setQueryFlags(ShortcutQuery.FLAG_MATCH_MANIFEST or ShortcutQuery.FLAG_MATCH_DYNAMIC)
-                    .setPackage(app.componentName.packageName)
+                    .setPackage(app.packageName)
                     .setActivity(app.componentName)
             try {
                 launcherApps

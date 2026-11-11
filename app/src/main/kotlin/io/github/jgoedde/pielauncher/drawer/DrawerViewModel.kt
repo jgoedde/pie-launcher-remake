@@ -19,22 +19,24 @@ class DrawerViewModel(
     apps: StateFlow<List<LauncherApp>>,
     locale: () -> Locale = Locale::getDefault,
 ) : ViewModel() {
-    val index: StateFlow<DrawerIndex> =
+    val entries: StateFlow<DrawerEntries> =
         apps
-            .map { DrawerIndex(it, locale()) }
+            .map { DrawerEntries(it, locale()) }
             .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.Eagerly, DrawerIndex(emptyList(), Locale.ROOT))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, DrawerEntries(emptyList(), Locale.ROOT))
 }
 
 /**
  * Drawer Entries ready for display: [search] ranks them per keystroke (cheap enough for the main
- * thread), [all] is the alphabetical list and [letters] its fast-scroller index.
+ * thread); [letters] is the fast-scroller index of the unsearched, alphabetical list.
  */
-class DrawerIndex(
+class DrawerEntries(
     apps: List<LauncherApp>,
     locale: Locale,
 ) {
-    val search = DrawerSearch(apps, locale, LauncherApp::label)
-    val all: List<LauncherApp> = search.search("")
-    val letters: List<IndexLetter> = alphabetIndex(all, locale, LauncherApp::label)
+    private val ranking = DrawerSearch(apps, locale, LauncherApp::label)
+    val letters: List<IndexLetter> = alphabetIndex(ranking.search(""), locale, LauncherApp::label)
+
+    /** Entries matching [query], best hit first; all entries alphabetically for a blank query. */
+    fun search(query: String): List<LauncherApp> = ranking.search(query)
 }

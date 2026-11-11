@@ -9,6 +9,7 @@ data class LauncherApp(
     val info: LauncherActivityInfo,
 ) {
     val componentName: ComponentName get() = info.componentName
+    val packageName: String get() = info.componentName.packageName
     val label: String = info.label.toString()
 
     /** Preinstalled with the system image (also after updates); such apps cannot be uninstalled. */
