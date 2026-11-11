@@ -1,0 +1,9 @@
+.gradle/
+build/
+.kotlin/
+local.properties
+.idea/
+*.iml
+captures/
+# Release keystores never live in the repo; only app/debug.keystore is committed.
+*.jks

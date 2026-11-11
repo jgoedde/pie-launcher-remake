@@ -24,7 +24,7 @@ The owner (@jgoedde) makes decisions and does human tasks (device checks, signin
 ## 2. Platform and stack
 
 - Kotlin, Jetpack Compose, Material 3 Expressive. `material3` 1.5.0-rc01 via the alpha Compose BOM 2026.11.00; `@OptIn(ExperimentalMaterial3ExpressiveApi::class)` allowed ([ADR 0003](adr/0003-material3-expressive-rc.md)). Move to 1.5.0 stable when it ships.
-- `minSdk = targetSdk = compileSdk = 37` (Android 17). No support for older versions.
+- `minSdk = targetSdk = compileSdk = 37` (Android 17). No support for older versions. compileSdk uses minor API level 2 (`android-37.2`) because the Compose BOM requires 37.1 or later.
 - applicationId and package root `io.github.jgoedde.pielauncher`.
 - Portrait only. Edge-to-edge (mandatory at targetSdk 37); predictive back is on by default.
 - Main user profile only (no work profile, no Private Space).
