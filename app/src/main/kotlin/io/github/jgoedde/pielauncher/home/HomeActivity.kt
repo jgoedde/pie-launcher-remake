@@ -113,8 +113,14 @@ class HomeActivity : ComponentActivity() {
                     }
                 }
 
-                Box(Modifier.fillMaxSize().onSizeChanged { drawer.travelPx = it.height.toFloat() }) {
-                    HomePage(drawer)
+                // At rest the side edges belong to the launcher; with an overlay open, back closes it.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { drawer.travelPx = it.height.toFloat() }
+                        .excludesBackGestureAtEdges(enabled = !drawer.isShown),
+                ) {
+                    HomePage(drawer, onSwipeDown = graph.notificationShade::expand)
                     AppDrawer(
                         state = drawer,
                         entries = drawerEntries,

@@ -15,6 +15,7 @@ import io.github.jgoedde.pielauncher.platform.AppLauncher
 import io.github.jgoedde.pielauncher.platform.AppShortcuts
 import io.github.jgoedde.pielauncher.platform.AppsRepository
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
+import io.github.jgoedde.pielauncher.platform.NotificationShade
 import io.github.jgoedde.pielauncher.platform.ShortcutPins
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
@@ -28,6 +29,7 @@ interface AppGraph {
     val iconLoader: IconLoader
     val shortcutPins: ShortcutPins
     val newBadges: NewBadges
+    val notificationShade: NotificationShade
     val appScope: CoroutineScope
 
     @Provides
