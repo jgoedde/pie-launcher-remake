@@ -33,7 +33,20 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- "Wallpaper & style" finds the ThemePicker provider through these (PRD 8.4). -->
+            <meta-data
+                android:name="com.android.launcher3.themedicon.option"
+                android:value="${applicationId}.themepicker" />
+            <meta-data
+                android:name="com.android.launcher3.grid.control"
+                android:value="${applicationId}.themepicker" />
         </activity>
+
+        <provider
+            android:name=".icons.ThemePickerProvider"
+            android:authorities="${applicationId}.themepicker"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER" />
 
         <!-- Pin Requests (e.g. browser PWAs): accepted silently, see PinShortcutActivity. -->
         <activity

@@ -25,6 +25,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -40,11 +41,14 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
 import io.github.jgoedde.pielauncher.drawer.DrawerEntry
 import io.github.jgoedde.pielauncher.drawer.DrawerEntryActions
 import io.github.jgoedde.pielauncher.drawer.DrawerViewModel
 import io.github.jgoedde.pielauncher.drawer.rememberDrawerState
+import io.github.jgoedde.pielauncher.icons.LocalIconShape
+import io.github.jgoedde.pielauncher.icons.iconShapeOf
 import io.github.jgoedde.pielauncher.pie.PieOverlay
 import io.github.jgoedde.pielauncher.pie.PieViewModel
 import io.github.jgoedde.pielauncher.pie.pieTouches
@@ -111,51 +115,57 @@ class HomeActivity : ComponentActivity() {
         wallpaperManager.addOnColorsChangedListener(wallpaperColorsListener, Handler(Looper.getMainLooper()))
 
         setContent {
+            val iconSettings by graph.iconSettings.settings.collectAsStateWithLifecycle(initialValue = null)
+            val iconShape = remember(iconSettings?.shapeKey) { iconShapeOf(IconShapes.byKey(iconSettings?.shapeKey)) }
             PieLauncherTheme {
-                val drawer = rememberDrawerState()
-                val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
-                val snackbars = remember { SnackbarHostState() }
-                val scope = rememberCoroutineScope()
-                val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close, scope, snackbars) }
-                val pie = rememberPieController()
-                LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
+                CompositionLocalProvider(LocalIconShape provides iconShape) {
+                    val drawer = rememberDrawerState()
+                    val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
+                    val snackbars = remember { SnackbarHostState() }
+                    val scope = rememberCoroutineScope()
+                    val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close, scope, snackbars) }
+                    val pie = rememberPieController()
+                    LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
 
-                LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
+                    LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
 
-                val drawerCoversBars by remember(drawer) { derivedStateOf { drawer.progress > 0.5f } }
-                val darkIcons = if (drawerCoversBars) !isSystemInDarkTheme() else wallpaperWantsDarkIcons.value
-                LaunchedEffect(darkIcons) {
-                    WindowCompat.getInsetsController(window, window.decorView).run {
-                        isAppearanceLightStatusBars = darkIcons
-                        isAppearanceLightNavigationBars = darkIcons
+                    val drawerCoversBars by remember(drawer) { derivedStateOf { drawer.progress > 0.5f } }
+                    val darkIcons = if (drawerCoversBars) !isSystemInDarkTheme() else wallpaperWantsDarkIcons.value
+                    LaunchedEffect(darkIcons) {
+                        WindowCompat.getInsetsController(window, window.decorView).run {
+                            isAppearanceLightStatusBars = darkIcons
+                            isAppearanceLightNavigationBars = darkIcons
+                        }
                     }
-                }
 
-                // At rest the side edges belong to the launcher; with an overlay open, back closes it.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .onSizeChanged { drawer.travelPx = it.height.toFloat() }
-                        .excludesBackGestureAtEdges(enabled = !drawer.isShown),
-                ) {
-                    HomePage(
-                        drawer,
-                        onSwipeDown = graph.notificationShade::expand,
-                        pieZone = Modifier.pieTouches(pie, onLaunch = { graph.appLauncher.launch(it.app) }),
-                    )
-                    AppDrawer(
-                        state = drawer,
-                        entries = drawerEntries,
-                        iconLoader = graph.iconLoader,
-                        actions = drawerActions,
-                    )
-                    PieOverlay(pie, graph.iconLoader)
-                    SnackbarHost(
-                        snackbars,
+                    // At rest the side edges belong to the launcher; with an overlay open, back closes it.
+                    Box(
                         Modifier
-                            .align(Alignment.BottomCenter)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
-                    )
+                            .fillMaxSize()
+                            .onSizeChanged { drawer.travelPx = it.height.toFloat() }
+                            .excludesBackGestureAtEdges(enabled = !drawer.isShown),
+                    ) {
+                        HomePage(
+                            drawer,
+                            onSwipeDown = graph.notificationShade::expand,
+                            pieZone = Modifier.pieTouches(pie, onLaunch = { graph.appLauncher.launch(it.app) }),
+                        )
+                        AppDrawer(
+                            state = drawer,
+                            entries = drawerEntries,
+                            iconLoader = graph.iconLoader,
+                            actions = drawerActions,
+                        )
+                        PieOverlay(pie, graph.iconLoader)
+                        SnackbarHost(
+                            snackbars,
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                                ),
+                        )
+                    }
                 }
             }
         }

@@ -34,9 +34,9 @@ import io.github.jgoedde.pielauncher.core.pie.Bounds
 import io.github.jgoedde.pielauncher.core.pie.PieGeometry
 import io.github.jgoedde.pielauncher.core.pie.PieState
 import io.github.jgoedde.pielauncher.icons.IconLoader
-import io.github.jgoedde.pielauncher.icons.IconShape
 import io.github.jgoedde.pielauncher.icons.LauncherIcon
 import io.github.jgoedde.pielauncher.icons.LauncherIconImage
+import io.github.jgoedde.pielauncher.icons.LocalIconShape
 import kotlin.math.roundToInt
 
 private val IconSize = 44.dp
@@ -120,13 +120,14 @@ private fun PieItemView(
     )
     val outline = if (hovered) MaterialTheme.colorScheme.primary else Color.Transparent
     val size = with(LocalDensity.current) { sizePx.toDp() }
+    val shape = LocalIconShape.current
     Box(
         Modifier
             .size(size)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            }.border(2.dp, outline, IconShape),
+            }.border(2.dp, outline, shape),
         contentAlignment = Alignment.Center,
     ) {
         when (item) {
@@ -138,10 +139,10 @@ private fun PieItemView(
                 LauncherIconImage(icon, IconSize)
             }
             // The target Layer's symbol arrives with Layer Switches (#30).
-            is ResolvedItem.LayerSwitch -> Box(Modifier.size(IconSize).clip(IconShape).background(item.color.toColor()))
+            is ResolvedItem.LayerSwitch -> Box(Modifier.size(IconSize).clip(shape).background(item.color.toColor()))
             ResolvedItem.Unavailable ->
                 Box(
-                    Modifier.size(IconSize).clip(IconShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    Modifier.size(IconSize).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
