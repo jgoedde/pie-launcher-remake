@@ -15,7 +15,12 @@ AOSP and Lawnchair. GPL-licensed launchers such as Kvaesitso may be read
 for ideas and behaviour, but their code must not be copied or closely
 paraphrased.
 
-(none ported yet)
+The Android Open Source Project, Apache License 2.0
+Copyright (C) 2022 The Android Open Source Project
+https://android.googlesource.com/platform/frameworks/libs/systemui/+/refs/heads/main/iconloaderlib/
+  - MonochromeIconFactory and BaseIconFactory (legacy icon wrapping):
+    core/src/main/kotlin/io/github/jgoedde/pielauncher/core/icons/GeneratedMonochrome.kt
+    app/src/main/kotlin/io/github/jgoedde/pielauncher/icons/MonochromeIconFactory.kt
 
 Bundled assets
 --------------
