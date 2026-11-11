@@ -1,0 +1,7 @@
+{ "version": 1, "baseLayer": "home", "layers": [{ "id": "home", "name": "Home", "items": [
+  { "type": "app", "package": "com.example.a" }, { "type": "app", "package": "com.example.b" }, { "type": "app", "package": "com.example.c" },
+  { "type": "app", "package": "com.example.d" }, { "type": "app", "package": "com.example.e" }, { "type": "app", "package": "com.example.f" },
+  { "type": "app", "package": "com.example.g" }, { "type": "app", "package": "com.example.h" }, { "type": "app", "package": "com.example.i" },
+  { "type": "app", "package": "com.example.j" }, { "type": "app", "package": "com.example.k" }, { "type": "app", "package": "com.example.l" },
+  { "type": "app", "package": "com.example.m" }
+] }] }
