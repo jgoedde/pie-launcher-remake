@@ -1,8 +1,5 @@
 package io.github.jgoedde.pielauncher.home
 
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -22,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.drawer.DrawerState
+import io.github.jgoedde.pielauncher.drawer.dragsDrawer
 
 /** Home Page dimensions. Code constants by design, never configuration. */
 object HomePageLayout {
@@ -48,9 +46,9 @@ fun HomePage(
     ) {
         val cell = with(LocalDensity.current) { CellGrid.cellSizeFor(constraints.maxWidth.toFloat()).toDp() }
         Column(Modifier.fillMaxSize()) {
-            WidgetZone(Modifier.weight(1f).opensDrawer(drawer))
+            WidgetZone(Modifier.weight(1f).dragsDrawer(drawer))
             PieZone()
-            WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).opensDrawer(drawer))
+            WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).dragsDrawer(drawer))
         }
     }
 }
@@ -66,11 +64,3 @@ private fun PieZone() {
 private fun WidgetZone(modifier: Modifier) {
     Box(modifier.fillMaxWidth())
 }
-
-@Composable
-private fun Modifier.opensDrawer(drawer: DrawerState): Modifier =
-    draggable(
-        state = rememberDraggableState { delta -> drawer.dragBy(delta) },
-        orientation = Orientation.Vertical,
-        onDragStopped = { velocity -> drawer.settle(velocity) },
-    )

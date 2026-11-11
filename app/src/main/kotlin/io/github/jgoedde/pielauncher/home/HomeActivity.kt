@@ -3,6 +3,7 @@ package io.github.jgoedde.pielauncher.home
 import android.app.WallpaperColors
 import android.app.WallpaperManager
 import android.content.Intent
+import android.content.pm.ShortcutInfo
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -28,8 +29,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
+import io.github.jgoedde.pielauncher.drawer.DrawerEntryActions
 import io.github.jgoedde.pielauncher.drawer.DrawerViewModel
 import io.github.jgoedde.pielauncher.drawer.rememberDrawerState
+import io.github.jgoedde.pielauncher.platform.LauncherApp
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 class HomeActivity : ComponentActivity() {
@@ -66,7 +69,8 @@ class HomeActivity : ComponentActivity() {
         setContent {
             PieLauncherTheme {
                 val drawer = rememberDrawerState()
-                val entries by drawerViewModel.entries.collectAsStateWithLifecycle()
+                val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
+                val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close) }
 
                 LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
 
@@ -83,12 +87,35 @@ class HomeActivity : ComponentActivity() {
                     HomePage(drawer)
                     AppDrawer(
                         state = drawer,
-                        entries = entries,
+                        entries = drawerEntries,
                         iconLoader = graph.iconLoader,
-                        onLaunch = { app -> if (graph.appLauncher.launch(app)) drawer.close() },
+                        actions = drawerActions,
                     )
                 }
             }
+        }
+    }
+
+    /** Launching an app or one of its Shortcuts closes the Drawer; system screens leave it open. */
+    private inner class HomeDrawerActions(
+        private val closeDrawer: () -> Unit,
+    ) : DrawerEntryActions {
+        override fun launch(app: LauncherApp) {
+            if (graph.appLauncher.launch(app)) closeDrawer()
+        }
+
+        override suspend fun shortcutsOf(app: LauncherApp): List<ShortcutInfo> = graph.appShortcuts.of(app)
+
+        override fun launch(shortcut: ShortcutInfo) {
+            if (graph.appLauncher.launch(shortcut)) closeDrawer()
+        }
+
+        override fun openAppInfo(app: LauncherApp) {
+            graph.appLauncher.openAppInfo(app)
+        }
+
+        override fun uninstall(app: LauncherApp) {
+            graph.appLauncher.uninstall(app)
         }
     }
 

@@ -16,3 +16,10 @@ for ideas and behaviour, but their code must not be copied or closely
 paraphrased.
 
 (none ported yet)
+
+Bundled assets
+--------------
+
+Material Symbols (app/src/main/res/drawable/search.xml, search_off.xml)
+Copyright Google LLC, Apache License 2.0
+https://github.com/google/material-design-icons
