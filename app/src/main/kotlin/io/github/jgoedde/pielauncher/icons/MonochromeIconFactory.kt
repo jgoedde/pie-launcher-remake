@@ -52,7 +52,7 @@ internal object MonochromeIconFactory {
         drawable: Drawable,
         sizePx: Int,
     ): Bitmap {
-        val icon = wrapToAdaptive(drawable)
+        val icon = wrapToAdaptive(softwareDrawable(drawable))
         val layer = layerSize(sizePx)
         val flat = createBitmap(layer, layer)
         Canvas(flat).apply {
@@ -80,8 +80,33 @@ internal object MonochromeIconFactory {
         drawable: Drawable,
         sizePx: Int,
     ): Bitmap {
-        if (drawable !is AdaptiveIconDrawable) return drawable.toBitmap(sizePx, sizePx)
-        return createBitmap(sizePx, sizePx).also { drawVisible(it, listOf(drawable.background, drawable.foreground)) }
+        val icon = softwareDrawable(drawable)
+        if (icon !is AdaptiveIconDrawable) return icon.toBitmap(sizePx, sizePx)
+        return createBitmap(sizePx, sizePx).also { drawVisible(it, listOf(icon.background, icon.foreground)) }
+    }
+
+    /**
+     * [drawable] with any HARDWARE bitmap (plain or as adaptive foreground) copied to software,
+     * since a software Canvas cannot draw hardware bitmaps.
+     */
+    private fun softwareDrawable(drawable: Drawable): Drawable =
+        when (drawable) {
+            is BitmapDrawable -> drawable.software()
+            is AdaptiveIconDrawable -> {
+                val foreground = drawable.foreground
+                if (foreground is BitmapDrawable && foreground.bitmap?.config == Bitmap.Config.HARDWARE) {
+                    AdaptiveIconDrawable(drawable.background, foreground.software(), drawable.monochrome)
+                } else {
+                    drawable
+                }
+            }
+            else -> drawable
+        }
+
+    private fun BitmapDrawable.software(): BitmapDrawable {
+        val bitmap = bitmap ?: return this
+        if (bitmap.config != Bitmap.Config.HARDWARE) return this
+        return BitmapDrawable(null, bitmap.copy(Bitmap.Config.ARGB_8888, false))
     }
 
     /** A mask of [size] × [size] tightly packed alpha bytes as an ALPHA_8 bitmap. */

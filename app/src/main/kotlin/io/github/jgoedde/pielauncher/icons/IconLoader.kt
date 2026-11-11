@@ -176,7 +176,7 @@ class IconLoader(
         val mask =
             when (source) {
                 MaskSource.MonochromeLayer -> MonochromeIconFactory.monochromeLayer(drawable, key.sizePx)
-                else -> null
+                MaskSource.Generated -> null
             } ?: MonochromeIconFactory.generatedMonochrome(drawable, key.sizePx)
         masks.write(key, mask)
         return mask.themed()
