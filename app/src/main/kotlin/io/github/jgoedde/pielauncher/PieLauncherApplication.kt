@@ -11,5 +11,7 @@ class PieLauncherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = createGraphFactory<AppGraph.Factory>().create(this)
+        // Starts listening for installs right away, so they get their New Badge.
+        graph.newBadges
     }
 }

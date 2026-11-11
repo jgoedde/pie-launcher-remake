@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.ShortcutInfo
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import dev.zacsweers.metro.Inject
 
@@ -27,6 +28,22 @@ class AppLauncher(
     fun openAppInfo(app: LauncherApp): Boolean =
         attempt("open app info of ${app.componentName}") {
             launcherApps.startAppDetailsActivity(app.componentName, app.info.user, null, null)
+        }
+
+    /** Opens the system "App info" screen of the app owning [shortcut]. */
+    fun openAppInfo(shortcut: PinnedShortcut): Boolean =
+        attempt("open app info of ${shortcut.packageName}") {
+            val activity =
+                shortcut.info.activity
+                    ?: launcherApps.getActivityList(shortcut.packageName, shortcut.user).firstOrNull()?.componentName
+            if (activity != null) {
+                launcherApps.startAppDetailsActivity(activity, shortcut.user, null, null)
+            } else {
+                application.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", shortcut.packageName, null))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
         }
 
     /** Asks the system to uninstall [app]'s package; the system shows its own confirmation. */

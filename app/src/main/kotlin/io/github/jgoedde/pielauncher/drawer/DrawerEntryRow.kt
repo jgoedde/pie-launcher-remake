@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -41,33 +43,39 @@ import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.platform.LauncherApp
+import io.github.jgoedde.pielauncher.platform.PinnedShortcut
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val IconSize = 48.dp
 private val MenuIconSize = 24.dp
+private val OwnerBadgeSize = 20.dp
 
 /** What a Drawer Entry and its long-press menu can do. */
 interface DrawerEntryActions {
-    fun launch(app: LauncherApp)
+    fun launch(entry: DrawerEntry)
 
     suspend fun shortcutsOf(app: LauncherApp): List<ShortcutInfo>
 
     fun launch(shortcut: ShortcutInfo)
 
-    fun openAppInfo(app: LauncherApp)
+    fun openAppInfo(entry: DrawerEntry)
 
     fun uninstall(app: LauncherApp)
+
+    /** Removes a pinned Shortcut, undoable for a few seconds. */
+    fun remove(shortcut: PinnedShortcut)
 }
 
 /**
- * One Drawer Entry: icon + label. Tap launches; long-press opens its menu: the app's Shortcuts,
- * then App info, then Uninstall (not for system apps).
+ * One Drawer Entry: icon + label, plus the New Badge while it is new. Tap launches; long-press
+ * opens its menu. For an app: its Shortcuts, then App info, then Uninstall (not for system apps).
+ * For a pinned Shortcut: Remove, then App info of the owning app.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun DrawerEntryRow(
-    app: LauncherApp,
+    entry: DrawerEntry,
     highlighted: Boolean,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
@@ -86,33 +94,72 @@ internal fun DrawerEntryRow(
                         if (highlighted) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                         RoundedCornerShape(percent = 50),
                     ).combinedClickable(
-                        onClick = { actions.launch(app) },
+                        onClick = { actions.launch(entry) },
                         onLongClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scope.launch { menuShortcuts = actions.shortcutsOf(app) }
+                            scope.launch {
+                                menuShortcuts =
+                                    when (entry) {
+                                        is DrawerEntry.App -> actions.shortcutsOf(entry.app)
+                                        is DrawerEntry.Shortcut -> emptyList()
+                                    }
+                            }
                         },
                     ).padding(PaddingValues(horizontal = 8.dp, vertical = 8.dp)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AppIcon(app, iconLoader)
+            when (entry) {
+                is DrawerEntry.App -> AppIcon(entry.app, iconLoader)
+                is DrawerEntry.Shortcut -> PinnedShortcutIcon(entry.shortcut, iconLoader)
+            }
             Text(
-                text = app.label,
+                text = entry.label,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (highlighted) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (entry.isNew) {
+                Badge { Text(stringResource(R.string.drawer_new_badge)) }
+            }
         }
         menuShortcuts?.let { shortcuts ->
-            EntryMenu(app, shortcuts, iconLoader, actions, onDismiss = { menuShortcuts = null })
+            val dismiss = { menuShortcuts = null }
+            when (entry) {
+                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, onDismiss = dismiss)
+                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, onDismiss = dismiss)
+            }
         }
     }
 }
 
 @Composable
-private fun EntryMenu(
-    app: LauncherApp,
+private fun PinnedShortcutMenu(
+    entry: DrawerEntry.Shortcut,
+    actions: DrawerEntryActions,
+    onDismiss: () -> Unit,
+) {
+    fun run(action: () -> Unit) {
+        onDismiss()
+        action()
+    }
+    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.drawer_remove)) },
+            onClick = { run { actions.remove(entry.shortcut) } },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.drawer_app_info)) },
+            onClick = { run { actions.openAppInfo(entry) } },
+        )
+    }
+}
+
+@Composable
+private fun AppMenu(
+    entry: DrawerEntry.App,
     shortcuts: List<ShortcutInfo>,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
@@ -139,12 +186,12 @@ private fun EntryMenu(
         if (shortcuts.isNotEmpty()) HorizontalDivider()
         DropdownMenuItem(
             text = { Text(stringResource(R.string.drawer_app_info)) },
-            onClick = { run { actions.openAppInfo(app) } },
+            onClick = { run { actions.openAppInfo(entry) } },
         )
-        if (!app.isSystemApp) {
+        if (!entry.app.isSystemApp) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.drawer_uninstall)) },
-                onClick = { run { actions.uninstall(app) } },
+                onClick = { run { actions.uninstall(entry.app) } },
             )
         }
     }
@@ -160,6 +207,33 @@ private fun AppIcon(
         if (value == null) value = iconLoader.originalIcon(app, sizePx)
     }
     IconBox(icon, IconSize)
+}
+
+/** The Shortcut's own icon with a small badge of the owning app at its lower end corner. */
+@Composable
+private fun PinnedShortcutIcon(
+    shortcut: PinnedShortcut,
+    iconLoader: IconLoader,
+) {
+    val sizePx = IconSize.toPx()
+    val badgePx = OwnerBadgeSize.toPx()
+    val densityDpi = (LocalDensity.current.density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
+    val icon: ImageBitmap? by produceState(iconLoader.cached(shortcut, sizePx), shortcut, sizePx) {
+        if (value == null) value = iconLoader.pinnedShortcutIcon(shortcut, sizePx, densityDpi)
+    }
+    val owner: ImageBitmap? by produceState<ImageBitmap?>(null, shortcut.packageName, shortcut.user, badgePx) {
+        value = iconLoader.ownerIcon(shortcut.packageName, shortcut.user, badgePx)
+    }
+    Box(Modifier.size(IconSize)) {
+        IconBox(icon, IconSize)
+        owner?.let {
+            Image(
+                it,
+                contentDescription = null,
+                modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(OwnerBadgeSize),
+            )
+        }
+    }
 }
 
 @Composable

@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
-import io.github.jgoedde.pielauncher.platform.LauncherApp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -175,7 +174,7 @@ private fun SearchField(
 
 @Composable
 private fun EntryList(
-    entries: List<LauncherApp>,
+    entries: List<DrawerEntry>,
     listState: LazyListState,
     highlightFirst: Boolean,
     iconLoader: IconLoader,
@@ -188,8 +187,8 @@ private fun EntryList(
         contentPadding = PaddingValues(top = 4.dp, end = FastScrollerWidth, bottom = bottom.calculateBottomPadding()),
         modifier = Modifier.fillMaxSize(),
     ) {
-        itemsIndexed(entries, key = { _, app -> app.componentName.flattenToString() }) { i, app ->
-            DrawerEntryRow(app, highlighted = highlightFirst && i == 0, iconLoader, actions)
+        itemsIndexed(entries, key = { _, entry -> entry.key }) { i, entry ->
+            DrawerEntryRow(entry, highlighted = highlightFirst && i == 0, iconLoader, actions)
         }
     }
 }
