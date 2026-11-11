@@ -66,6 +66,11 @@ class AppsRepository(
     /** Packages freshly installed in the main profile (not updates), as they arrive. */
     val installedPackages: Flow<String> = installs.asSharedFlow()
 
+    private val packageChanges = MutableSharedFlow<String>(extraBufferCapacity = 64)
+
+    /** Packages added, updated, removed or made (un)available in any profile, as they arrive. */
+    val changedPackages: Flow<String> = packageChanges.asSharedFlow()
+
     val apps: StateFlow<List<LauncherApp>> =
         changes
             .filter { it == Change.Packages }
@@ -101,7 +106,11 @@ class AppsRepository(
         callbackFlow {
             val callback =
                 object : LauncherApps.Callback() {
-                    private fun changed(user: UserHandle) {
+                    private fun changed(
+                        user: UserHandle,
+                        vararg packageNames: String,
+                    ) {
+                        packageNames.forEach { packageChanges.tryEmit(it) }
                         if (user == mainUser) trySend(Change.Packages)
                     }
 
@@ -111,7 +120,7 @@ class AppsRepository(
                     ) {
                         // Updates arrive as onPackageChanged, so this is a fresh install.
                         if (user == mainUser) installs.tryEmit(packageName)
-                        changed(user)
+                        changed(user, packageName)
                     }
 
                     override fun onShortcutsChanged(
@@ -125,24 +134,24 @@ class AppsRepository(
                     override fun onPackageRemoved(
                         packageName: String,
                         user: UserHandle,
-                    ) = changed(user)
+                    ) = changed(user, packageName)
 
                     override fun onPackageChanged(
                         packageName: String,
                         user: UserHandle,
-                    ) = changed(user)
+                    ) = changed(user, packageName)
 
                     override fun onPackagesAvailable(
                         packageNames: Array<out String>,
                         user: UserHandle,
                         replacing: Boolean,
-                    ) = changed(user)
+                    ) = changed(user, *packageNames)
 
                     override fun onPackagesUnavailable(
                         packageNames: Array<out String>,
                         user: UserHandle,
                         replacing: Boolean,
-                    ) = changed(user)
+                    ) = changed(user, *packageNames)
                 }
             val localeReceiver =
                 object : BroadcastReceiver() {
