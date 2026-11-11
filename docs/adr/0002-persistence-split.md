@@ -1,0 +1,3 @@
+# Persistence split: Pie Config file, Room, DataStore
+
+Each kind of state lives in the store that fits it. The **Pie Config** is stored as the imported JSON file in internal storage. That file is the source of truth, and an export is a byte copy of it. The **widget layout** (Pages, widget placements, `appWidgetId`s) and **App Drawer state** (New Badge) live in **Room**: they are relational, edited transactionally (with undo) and never exported. **Launcher settings** live in **Preferences DataStore**. We rejected a single store for everything. Putting the Pie Config into a database would make import/export a lossy round trip. Keeping the layout in hand-written JSON files would mean re-inventing atomic, transactional edits.

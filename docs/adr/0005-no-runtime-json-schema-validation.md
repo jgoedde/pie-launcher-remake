@@ -1,0 +1,3 @@
+# No JSON Schema library at runtime
+
+`spec/pie-config.schema.json` is the specification of the Pie Config, but the app does not validate against it at runtime. `:core` decodes with kotlinx.serialization and applies hand-written semantic validation: unique ids, 1–12 Pie Items per Layer, Layer references that resolve, and warnings for missing targets. A JVM test validates the example files and the test fixtures against the schema with a test-only JSON Schema library, so the schema and the code cannot drift apart. We rejected a runtime schema validator because the JVM options are heavy (Jackson-based), cannot express the semantic rules anyway, and would produce error messages we don't control.

@@ -1,0 +1,3 @@
+# Build on Material 3 Expressive release candidates
+
+We depend on `androidx.compose.material3` 1.5.0-rc01 through the alpha Compose BOM (2026.11.00) and allow `@OptIn(ExperimentalMaterial3ExpressiveApi::class)` (`MaterialShapes`, `LoadingIndicator`, Expressive motion). Material 3 Expressive is not in a stable `material3` release yet (the stable BOM ships 1.4.0), and the Expressive look is central to the product. For a personal-use app with pinned versions, the risk of API churn is acceptable. We move to 1.5.0 stable as soon as it ships. Waiting for stable, or using only stable APIs, would have postponed or diluted the design.

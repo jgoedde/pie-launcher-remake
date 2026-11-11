@@ -1,0 +1,3 @@
+# Metro for dependency injection
+
+We use [Metro](https://github.com/ZacSweers/metro) (1.x), a Kotlin compiler plugin, for dependency injection. It checks the dependency graph at compile time like Dagger, but needs no KSP/kapt and little boilerplate (`@Inject`, `@DependencyGraph`). Tests pass fakes through constructor injection. We considered three alternatives. Hilt adds KSP, boilerplate and build time. Koin resolves the graph at runtime, so graph errors appear only at start or in a `verify()` test. Manual DI through an `AppContainer` would also work, but the owner prefers a DI framework. kotlin-inject has seen no release since January 2026.
