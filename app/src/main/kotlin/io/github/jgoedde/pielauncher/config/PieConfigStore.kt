@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.text.Collator
@@ -43,9 +46,24 @@ class PieConfigStore(
     /** Null until the file is decoded, and while it cannot be. */
     val config: StateFlow<PieConfig?> = current.asStateFlow()
 
+    /** Keeps an import from racing the first load. */
+    private val lock = Mutex()
+
     init {
-        appScope.launch(Dispatchers.IO) { current.value = load() }
+        appScope.launch(Dispatchers.IO) { lock.withLock { current.value = load() } }
     }
+
+    /**
+     * Makes [config] the active Pie Config: [normalized] (its normalized file) replaces the stored
+     * file, and the Pie picks it up at once. False when the file cannot be written; nothing changes then.
+     */
+    suspend fun replace(
+        config: PieConfig,
+        normalized: String,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            lock.withLock { write(normalized).also { if (it) current.value = config } }
+        }
 
     private fun load(): PieConfig? {
         if (!file.baseFile.exists()) {
@@ -79,14 +97,17 @@ class PieConfigStore(
         return config
     }
 
-    private fun write(text: String) {
+    /** Atomic: on failure the previous file stays. */
+    private fun write(text: String): Boolean {
         val out = file.startWrite()
-        try {
+        return try {
             out.write(text.encodeToByteArray())
             file.finishWrite(out)
+            true
         } catch (e: IOException) {
             file.failWrite(out)
             Log.e(TAG, "Cannot write the Pie Config", e)
+            false
         }
     }
 

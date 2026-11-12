@@ -48,6 +48,23 @@
             android:exported="true"
             android:permission="android.permission.BIND_WALLPAPER" />
 
+        <!--
+          Launcher Settings (PRD 10.1): its own LAUNCHER entry, so it shows in the App Drawer, can be
+          a Pie Item and stays reachable when the Pie Config is broken. Own task, so it never
+          lands in the Home Activity's task.
+        -->
+        <activity
+            android:name=".settings.SettingsActivity"
+            android:exported="true"
+            android:label="@string/settings_label"
+            android:taskAffinity="${applicationId}.settings"
+            android:theme="@style/Theme.PieLauncher.Settings">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Pin Requests (e.g. browser PWAs): accepted silently, see PinShortcutActivity. -->
         <activity
             android:name=".drawer.PinShortcutActivity"

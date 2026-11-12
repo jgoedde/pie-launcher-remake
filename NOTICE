@@ -32,6 +32,6 @@ Bundled assets
 --------------
 
 Material Symbols (app/src/main/res/drawable/search.xml, search_off.xml,
-pie_unavailable.xml)
+pie_unavailable.xml, arrow_back.xml)
 Copyright Google LLC, Apache License 2.0
 https://github.com/google/material-design-icons
