@@ -35,6 +35,7 @@ import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.home.CellSpan
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import kotlinx.coroutines.launch
@@ -89,14 +90,19 @@ class PinWidgetActivity : ComponentActivity() {
     private fun add() {
         val info = request?.getAppWidgetProviderInfo(this) ?: return cancel()
         pendingId = widgets.allocateId()
-        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider)) return accept()
+        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider, bindOptions())) return accept()
         bind.launch(
             Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingId)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile),
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, bindOptions()),
         )
     }
+
+    /** The widget's size at the spot the sheet found, so it lays out right from its first update. */
+    private fun bindOptions(): Bundle? =
+        sheet?.span?.let { span -> sizeOptions(WidgetCatalog.sizeList(span, graph.homeGeometry.catalogGrid(this))) }
 
     /**
      * Places the bound widget first and accepts the request only once it has a spot, so the

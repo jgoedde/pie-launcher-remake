@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
@@ -66,9 +67,10 @@ fun <W> HomePage(
     ) {
         val density = LocalDensity.current
         val pieZonePx = with(density) { HomePageLayout.PieZoneHeight.toPx() }
+        val cellGapPx = with(density) { CellGrid.CELL_GAP_DP.dp.toPx() }
         val zones =
-            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx) {
-                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx)
+            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx) {
+                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx)
             }
         LaunchedEffect(zones) { onZonesLaidOut(zones) }
         val layout = remember(widgets, zones) { layoutOf(widgets, zones) }

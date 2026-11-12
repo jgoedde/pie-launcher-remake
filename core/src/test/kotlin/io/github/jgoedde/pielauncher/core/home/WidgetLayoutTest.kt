@@ -369,22 +369,30 @@ class WidgetLayoutTest {
     }
 
     @Test
-    fun `hit-testing finds the widget under a point and its px bounds`() {
-        // 100 px cells; the upper zone (300 px) has no vertical padding.
+    fun `hit-testing finds the widget under a point and its px bounds, gaps between its own cells included`() {
+        // 100 px cells, 10 px gaps: column c starts at 110 c; the upper zone has no vertical padding.
         val layout = homePage(widget(1, HomeUpper, CellRect(1, 1, 2, 1)))
 
+        assertEquals(CellBounds(left = 110f, top = 110f, width = 210f, height = 100f), layout.boundsOf(layout.widget(1)!!))
         assertEquals(1, layout.widgetAt(HomeUpper, 150f, 150f)?.id)
-        assertEquals(null, layout.widgetAt(HomeUpper, 50f, 150f))
+        assertEquals(1, layout.widgetAt(HomeUpper, 215f, 150f)?.id)
+        assertEquals(null, layout.widgetAt(HomeUpper, 105f, 150f))
         assertEquals(null, layout.widgetAt(HomeLower, 150f, 50f))
-        assertEquals(PxRect(100f, 100f, 300f, 200f), layout.boundsOf(layout.widget(1)!!))
-        assertEquals(DragTarget.Cell(HomeUpper, 3, 2), layout.cellAt(HomeUpper, 399f, 299f))
-        assertEquals(null, layout.cellAt(HomeUpper, 400f, 0f))
+    }
+
+    @Test
+    fun `the cell under a point counts a gap to the cell before it`() {
+        val layout = homePage()
+
+        assertEquals(DragTarget.Cell(HomeUpper, 3, 2), layout.cellAt(HomeUpper, 429f, 319f))
+        assertEquals(DragTarget.Cell(HomeUpper, 0, 0), layout.cellAt(HomeUpper, 105f, 105f))
+        assertEquals(null, layout.cellAt(HomeUpper, 430f, 0f))
     }
 }
 
-/** The Home Page of a 400 x 1000 px window: 100 px cells, a 4 x 3 upper zone and a 4 x 1 lower zone. */
+/** The Home Page of a 430 x 1020 px window: 100 px cells with 10 px gaps, a 4 x 3 upper zone and a 4 x 1 lower zone. */
 internal fun homePage(vararg widgets: LaidOutWidget) =
-    WidgetLayout(HomeZones.of(widthPx = 400f, heightPx = 1000f, pieZoneHeightPx = 600f).grids, widgets.toList())
+    WidgetLayout(HomeZones.of(widthPx = 430f, heightPx = 1020f, pieZoneHeightPx = 600f, cellGapPx = 10f).grids, widgets.toList())
 
 internal fun bounds(
     default: CellSpan,

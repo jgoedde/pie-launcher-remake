@@ -21,17 +21,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -44,8 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
@@ -79,7 +73,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /** An open empty-space menu: the long-pressed Widget Zone and the press point inside it. */
 private data class EmptySpaceMenu(
@@ -197,19 +190,26 @@ class HomeActivity : ComponentActivity() {
                                 }),
                             widgets = widgets,
                             layoutOf = graph.widgetHost::layout,
-                            widgetContent = { widget, width, height ->
-                                HostedWidget(graph.widgetHost, widget.id, width, height, Modifier.fillMaxSize())
+                            widgetContent = { widget, _, _ ->
+                                HostedWidget(
+                                    host = graph.widgetHost,
+                                    appWidgetId = widget.id,
+                                    span = widget.cells.span,
+                                    grid = graph.homeGeometry.catalogGrid(this@HomeActivity),
+                                    onLightBackground = wallpaperWantsDarkIcons.value,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             },
                             onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
                             onZonesLaidOut = graph.homeGeometry::report,
                             zoneOverlay = { zone ->
                                 emptySpaceMenu?.takeIf { it.zone == zone }?.let { menu ->
-                                    EmptySpaceMenuPopup(
+                                    EmptySpacePopup(
                                         at = menu.at,
                                         onDismiss = { emptySpaceMenu = null },
-                                        onAddWidget = { addWidget.launch(zone) },
-                                        onWallpaper = { start(wallpaperPickerIntent()) },
-                                        onSettings = { start(Intent(this@HomeActivity, SettingsActivity::class.java)) },
+                                        onWallpaperStyle = { start(wallpaperPickerIntent()) },
+                                        onWidgets = { addWidget.launch(zone) },
+                                        onHomeSettings = { start(Intent(this@HomeActivity, SettingsActivity::class.java)) },
                                     )
                                 }
                             },
@@ -322,33 +322,11 @@ class HomeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         WallpaperManager.getInstance(this).removeOnColorsChangedListener(wallpaperColorsListener)
+        graph.widgetHost.releaseViews()
         super.onDestroy()
     }
 }
 
 private const val TAG = "HomeActivity"
-
-/** The empty-space menu (PRD 7.2), opened above and left of the press like the Drawer's menu. */
-@Composable
-private fun EmptySpaceMenuPopup(
-    at: Offset,
-    onDismiss: () -> Unit,
-    onAddWidget: () -> Unit,
-    onWallpaper: () -> Unit,
-    onSettings: () -> Unit,
-) {
-    fun run(action: () -> Unit) {
-        onDismiss()
-        action()
-    }
-    // A zero-size anchor at the press: the menu's end edge sits at the touch X, its bottom on the touch Y.
-    Box(Modifier.offset { IntOffset(0, at.y.roundToInt()) }) {
-        ThumbMenu(pressX = at.x.roundToInt(), onDismiss = onDismiss) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_add_widget)) }, onClick = { run(onAddWidget) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_wallpaper)) }, onClick = { run(onWallpaper) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_settings)) }, onClick = { run(onSettings) })
-        }
-    }
-}
 
 private fun WallpaperColors?.wantsDarkIcons(): Boolean = this != null && colorHints and WallpaperColors.HINT_SUPPORTS_DARK_TEXT != 0

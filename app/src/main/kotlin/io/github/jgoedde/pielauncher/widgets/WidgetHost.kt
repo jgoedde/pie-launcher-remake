@@ -13,17 +13,19 @@ import android.util.Log
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CellSpan
 import io.github.jgoedde.pielauncher.core.home.HOME_PAGE
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.ProviderSizes
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
+import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetConfigure
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
-import io.github.jgoedde.pielauncher.core.home.WidgetSize
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.WidgetRow
@@ -51,6 +53,8 @@ class WidgetHost(
     private val manager: AppWidgetManager = AppWidgetManager.getInstance(application)
     private val host = LauncherAppWidgetHost(application, onRemoved = { id -> appScope.launch { dao.delete(listOf(id)) } })
 
+    private val pxPerDp: Float get() = application.resources.displayMetrics.density
+
     /** Serialises placements, so two adds can never claim the same free cells. */
     private val placing = Mutex()
 
@@ -75,6 +79,9 @@ class WidgetHost(
         }
     }
 
+    /** Called when the Home Activity is destroyed: its widget views must not outlive it. */
+    fun releaseViews() = host.releaseViews()
+
     fun allocateId(): Int = host.allocateAppWidgetId()
 
     fun deleteId(id: Int) = host.deleteAppWidgetId(id)
@@ -85,7 +92,8 @@ class WidgetHost(
         id: Int,
         profile: UserHandle,
         provider: ComponentName,
-    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, null)
+        options: Bundle? = null,
+    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, options)
 
     fun createView(
         context: Context,
@@ -104,21 +112,24 @@ class WidgetHost(
     fun layout(
         rows: List<WidgetRow>,
         zones: HomeZones,
-    ): WidgetLayout =
-        WidgetLayout(
+    ): WidgetLayout {
+        val grid = zones.catalogGrid(pxPerDp)
+        return WidgetLayout(
             zones.grids,
             rows.filter { it.page == HOME_PAGE }.map { row ->
-                val bounds = info(row.appWidgetId)?.spanBounds(zones) ?: SpanBounds.fixed(row.cells.span)
+                val bounds = info(row.appWidgetId)?.spanBounds(grid, pxPerDp) ?: SpanBounds.fixed(row.cells.span)
                 LaidOutWidget(row.appWidgetId, row.zone, row.cells, bounds)
             },
         )
+    }
 
     /** Where a widget of [info] would go: the first of [targets] on the Home Page with room, or a rejection. */
     suspend fun findSpot(
         info: AppWidgetProviderInfo,
         targets: List<WidgetZoneId>,
         zones: HomeZones,
-    ): LayoutResult = layout(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones), targets)
+    ): LayoutResult =
+        layout(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), targets)
 
     /**
      * Places the bound widget [id] at the first free spot of [targets] and records it. Nothing is
@@ -131,7 +142,7 @@ class WidgetHost(
     ): LayoutResult =
         placing.withLock {
             val info = info(id) ?: return LayoutResult.Rejected(Rejection.NoRoom)
-            val result = layout(dao.all(), zones).add(id, info.spanBounds(zones), targets)
+            val result = layout(dao.all(), zones).add(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), targets)
             if (result is LayoutResult.Changed) {
                 dao.insert(WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
             }
@@ -167,26 +178,25 @@ internal fun AppWidgetProviderInfo.needsConfigure(): Boolean =
         reconfigurable = widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0,
     )
 
-/**
- * Interim span bounds until the Widget Catalog (#54): the default span from `minWidth`/`minHeight`
- * and the target cells, the min span from `minResize*` on the axes the provider resizes on (else
- * the default), the max span the largest Widget Zone.
- */
-private fun AppWidgetProviderInfo.spanBounds(zones: HomeZones): SpanBounds {
-    val target = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null
-    val default = WidgetSize(minWidth, minHeight, target).defaultSpan(zones.cellPx)
-    val minResize = WidgetSize(minResizeWidth, minResizeHeight).minSpan(zones.cellPx)
-    val horizontal = resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
-    val vertical = resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0
-    return SpanBounds(
-        default = default,
-        min =
-            CellSpan(
-                if (horizontal) minOf(minResize.width, default.width) else default.width,
-                if (vertical) minOf(minResize.height, default.height) else default.height,
+/** The span bounds of this provider on [grid] (Widget Catalog, Launcher3 `initSpans`); provider px mapped to dp. */
+private fun AppWidgetProviderInfo.spanBounds(
+    grid: CatalogGrid,
+    pxPerDp: Float,
+): SpanBounds {
+    val spans =
+        WidgetCatalog.spans(
+            ProviderSizes(
+                minWidth = minWidth / pxPerDp,
+                minHeight = minHeight / pxPerDp,
+                minResizeWidth = minResizeWidth / pxPerDp,
+                minResizeHeight = minResizeHeight / pxPerDp,
+                maxResizeWidth = maxResizeWidth / pxPerDp,
+                maxResizeHeight = maxResizeHeight / pxPerDp,
+                targetCells = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null,
+                resizesHorizontally = resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0,
+                resizesVertically = resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0,
             ),
-        max = CellSpan(zones.upper.columns, maxOf(zones.upper.rows, zones.lower.rows)),
-        resizesHorizontally = horizontal,
-        resizesVertically = vertical,
-    )
+            grid,
+        )
+    return SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
 }

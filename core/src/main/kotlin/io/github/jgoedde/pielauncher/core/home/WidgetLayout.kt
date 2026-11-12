@@ -27,17 +27,6 @@ data class CellRect(
             other.row < row + height
 }
 
-/** A rectangle in px. */
-data class PxRect(
-    val left: Float,
-    val top: Float,
-    val right: Float,
-    val bottom: Float,
-) {
-    val width: Float get() = right - left
-    val height: Float get() = bottom - top
-}
-
 /**
  * A widget's span bounds (from its provider, via the Widget Catalog): the span it is added at,
  * the span range it may be resized or shrunk within, and the axes it resizes on.
@@ -127,30 +116,37 @@ class WidgetLayout(
 
     fun inZone(zone: WidgetZoneId): List<LaidOutWidget> = widgets.filter { it.zone == zone }
 
-    /** The px bounds of [widget] inside its zone. */
-    fun boundsOf(widget: LaidOutWidget): PxRect = grid(widget.zone).boundsOf(widget.cells)
+    /** Where [widget] lies inside its zone, in px: its cells plus the gaps between them. */
+    fun boundsOf(widget: LaidOutWidget): CellBounds = grid(widget.zone).bounds(widget.cells)
 
-    /** The widget under the zone-relative point ([x], [y]) in [zone]; null on empty space. */
+    /** The widget under the zone-relative point ([x], [y]) in [zone]; null on empty space and in gaps between widgets. */
     fun widgetAt(
         zone: WidgetZoneId,
         x: Float,
         y: Float,
-    ): LaidOutWidget? {
-        val cell = cellAt(zone, x, y) ?: return null
-        return inZone(zone).firstOrNull { it.cells.overlaps(CellRect(cell.column, cell.row, 1, 1)) }
-    }
+    ): LaidOutWidget? =
+        inZone(zone).firstOrNull { widget ->
+            val bounds = boundsOf(widget)
+            x >= bounds.left && x < bounds.left + bounds.width && y >= bounds.top && y < bounds.top + bounds.height
+        }
 
-    /** The cell of [zone] under the zone-relative point ([x], [y]); null outside its rows and columns. */
+    /**
+     * The cell of [zone] under the zone-relative point ([x], [y]), a gap counting to the cell
+     * before it; null outside the zone's rows and columns.
+     */
     fun cellAt(
         zone: WidgetZoneId,
         x: Float,
         y: Float,
     ): DragTarget.Cell? {
         val grid = grids[zone] ?: return null
-        if (grid.cellWidth <= 0f || grid.cellHeight <= 0f) return null
-        val column = floor(x / grid.cellWidth).toInt()
-        val row = floor((y - grid.verticalPadding) / grid.cellHeight).toInt()
-        if (x < 0f || y < grid.verticalPadding || column !in 0 until grid.columns || row !in 0 until grid.rows) return null
+        if (grid.cellWidth <= 0f || grid.cellHeight <= 0f || x < 0f || y < grid.verticalPadding) return null
+        val column = floor(x / (grid.cellWidth + grid.gap)).toInt()
+        val row = floor((y - grid.verticalPadding) / (grid.cellHeight + grid.gap)).toInt()
+        val insideLastCell =
+            x < grid.columns * (grid.cellWidth + grid.gap) - grid.gap &&
+                y < grid.verticalPadding + grid.rows * (grid.cellHeight + grid.gap) - grid.gap
+        if (column !in 0 until grid.columns || row !in 0 until grid.rows || !insideLastCell) return null
         return DragTarget.Cell(zone, column, row)
     }
 
