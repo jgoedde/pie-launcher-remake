@@ -49,6 +49,7 @@ import io.github.jgoedde.pielauncher.drawer.DrawerViewModel
 import io.github.jgoedde.pielauncher.drawer.rememberDrawerState
 import io.github.jgoedde.pielauncher.icons.LocalIconShape
 import io.github.jgoedde.pielauncher.icons.iconShapeOf
+import io.github.jgoedde.pielauncher.pie.LaunchTarget
 import io.github.jgoedde.pielauncher.pie.PieOverlay
 import io.github.jgoedde.pielauncher.pie.PieViewModel
 import io.github.jgoedde.pielauncher.pie.pieTouches
@@ -84,6 +85,7 @@ class HomeActivity : ComponentActivity() {
                 PieViewModel(
                     config = graph.pieConfigStore.config,
                     apps = graph.appsRepository.apps,
+                    launcherChanged = graph.appsRepository.launcherChanged,
                     resolver = graph.pieItemResolver,
                 )
             }
@@ -148,7 +150,13 @@ class HomeActivity : ComponentActivity() {
                         HomePage(
                             drawer,
                             onSwipeDown = graph.notificationShade::expand,
-                            pieZone = Modifier.pieTouches(pie, onLaunch = { graph.appLauncher.launch(it.app) }),
+                            pieZone =
+                                Modifier.pieTouches(pie, onLaunch = { target ->
+                                    when (target) {
+                                        is LaunchTarget.App -> graph.appLauncher.launch(target.app)
+                                        is LaunchTarget.Shortcut -> graph.appLauncher.launch(target.shortcut)
+                                    }
+                                }),
                         )
                         AppDrawer(
                             state = drawer,

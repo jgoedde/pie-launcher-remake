@@ -111,6 +111,16 @@ class PieConfigCodecTest {
     }
 
     @Test
+    fun `an icon that is no Material Symbols Rounded name is an error`() {
+        decoded(config(layer(extra = ""","icon": "music_note"""")))
+
+        assertEquals(
+            listOf(ConfigError("\$.layers[0].icon", "unknown Material Symbols Rounded name \"no_such_symbol\"")),
+            errors(config(layer(extra = ""","icon": "no_such_symbol""""))),
+        )
+    }
+
+    @Test
     fun `broken JSON is one error at the root`() {
         assertEquals(listOf("\$"), errors("{ \"version\": ").map { it.path })
     }
