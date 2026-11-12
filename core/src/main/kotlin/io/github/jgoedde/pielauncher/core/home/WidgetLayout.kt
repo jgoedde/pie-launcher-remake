@@ -72,7 +72,16 @@ sealed interface DragTarget {
 }
 
 /** The Resize Frame edge whose handle is dragged. */
-enum class ResizeEdge { Left, Top, Right, Bottom }
+enum class ResizeEdge {
+    Left,
+    Top,
+    Right,
+    Bottom,
+    ;
+
+    /** Whether this edge's handle changes the width (else the height). */
+    val horizontal: Boolean get() = this == Left || this == Right
+}
 
 /** Why a layout operation found no solution. */
 enum class Rejection {
@@ -223,15 +232,14 @@ class WidgetLayout(
         deltaCells: Float,
     ): LayoutResult {
         val widget = widget(id) ?: return LayoutResult.Unchanged
+        if (edge !in resizeEdges(id)) return LayoutResult.Unchanged
         val grid = grid(widget.zone)
-        val horizontal = edge == ResizeEdge.Left || edge == ResizeEdge.Right
+        val horizontal = edge.horizontal
         val cells = widget.cells
         val current = if (horizontal) cells.width else cells.height
         val min = if (horizontal) widget.bounds.min.width else widget.bounds.min.height
         val max = if (horizontal) widget.bounds.max.width else widget.bounds.max.height
         val gridSize = if (horizontal) grid.columns else grid.rows
-        val resizes = if (horizontal) widget.bounds.resizesHorizontally else widget.bounds.resizesVertically
-        if (!(resizes && min < max && min < gridSize) && current >= min) return LayoutResult.Unchanged
 
         val growsForward = edge == ResizeEdge.Right || edge == ResizeEdge.Bottom
         val growth = spanIncrement(deltaCells) * if (growsForward) 1 else -1
@@ -259,6 +267,29 @@ class WidgetLayout(
             size += step
         }
         return LayoutResult.Unchanged
+    }
+
+    /**
+     * The Resize Frame edges of widget [id] that get a handle (Launcher3
+     * `updateResizeHandlesForGrid`): both edges of each axis the widget resizes on with a real
+     * range (min below max and below the zone's size), plus an axis on which it is below its min
+     * span, so it can be fixed after a display change. Empty for an unknown id.
+     */
+    fun resizeEdges(id: Int): Set<ResizeEdge> {
+        val widget = widget(id) ?: return emptySet()
+        val grid = grid(widget.zone)
+        val bounds = widget.bounds
+
+        fun axis(
+            resizes: Boolean,
+            current: Int,
+            min: Int,
+            max: Int,
+            gridSize: Int,
+        ) = (resizes && min < max && min < gridSize) || current < min
+        val horizontal = axis(bounds.resizesHorizontally, widget.cells.width, bounds.min.width, bounds.max.width, grid.columns)
+        val vertical = axis(bounds.resizesVertically, widget.cells.height, bounds.min.height, bounds.max.height, grid.rows)
+        return ResizeEdge.entries.filterTo(mutableSetOf()) { if (it.horizontal) horizontal else vertical }
     }
 
     /** Takes widget [id] out; [LayoutResult.Changed.widget] is what [undo] puts back. */

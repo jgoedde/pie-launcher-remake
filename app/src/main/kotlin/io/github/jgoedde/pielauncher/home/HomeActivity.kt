@@ -162,15 +162,18 @@ class HomeActivity : ComponentActivity() {
                     LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
 
                     var emptySpaceMenu by remember { mutableStateOf<EmptySpaceMenu?>(null) }
+                    val editor = remember { WidgetEditor(HomeWidgetEditActions(scope, snackbars)) }
                     val addWidget =
                         rememberLauncherForActivityResult(AddWidgetContract()) { outcome ->
                             val message =
                                 when (outcome) {
                                     AddWidgetOutcome.NoRoom -> R.string.widget_no_space
                                     AddWidgetOutcome.TooLarge -> R.string.widget_too_large
-                                    AddWidgetOutcome.Added, AddWidgetOutcome.Cancelled -> null
+                                    is AddWidgetOutcome.Added, AddWidgetOutcome.Cancelled -> null
                                 }
                             if (message != null) scope.launch { snackbars.showSnackbar(getString(message)) }
+                            // The new widget's Resize Frame opens at once (Launcher3).
+                            if (outcome is AddWidgetOutcome.Added) editor.added(outcome.widgetId)
                         }
                     val pickWidget =
                         rememberLauncherForActivityResult(WidgetPickerContract()) { picked ->
@@ -185,7 +188,6 @@ class HomeActivity : ComponentActivity() {
                                 pickWidget.launch(WidgetPickerRequest(packageName = app.packageName))
                             }
                         }
-                    val editor = remember { WidgetEditor(HomeWidgetEditActions(scope, snackbars)) }
                     WidgetRemovalSnackbar(editor, snackbars)
                     BackHandler(enabled = editor.mode != EditMode.Idle, onBack = editor::leave)
                     val rows by graph.widgetHost.widgets.collectAsStateWithLifecycle()
@@ -219,6 +221,7 @@ class HomeActivity : ComponentActivity() {
                         Modifier
                             .fillMaxSize()
                             .onSizeChanged { drawer.travelPx = it.height.toFloat() }
+                            .closesResizeFrameOnTapOutside(editor)
                             .excludesBackGestureAtEdges(
                                 enabled = !drawer.isShown && emptySpaceMenu == null && editor.mode == EditMode.Idle,
                             ),
@@ -255,10 +258,11 @@ class HomeActivity : ComponentActivity() {
                             onZonesLaidOut = graph.homeGeometry::report,
                             editor = editor,
                             widgetOverlay = { widget ->
-                                if ((editor.mode as? EditMode.Selected)?.widgetId == widget.id) {
+                                val selected = editor.mode as? EditMode.Selected
+                                if (selected?.widgetId == widget.id && selected.popupOpen) {
                                     WidgetPopup(
                                         reconfigurable = remember(widget.id) { editor.isReconfigurable(widget.id) },
-                                        onDismiss = editor::leave,
+                                        onDismiss = editor::closePopup,
                                         onRemove = { editor.remove(widget.id) },
                                         onWidgetSettings = { editor.openSettings(widget.id) },
                                     )
@@ -276,6 +280,7 @@ class HomeActivity : ComponentActivity() {
                                 }
                             },
                         )
+                        ResizeFrame(editor)
                         AppDrawer(
                             state = drawer,
                             entries = drawerEntries,

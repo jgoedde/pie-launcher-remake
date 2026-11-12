@@ -21,7 +21,18 @@ import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import kotlinx.coroutines.launch
 
 /** How an "Add widget" ended. */
-enum class AddWidgetOutcome { Added, NoRoom, TooLarge, Cancelled }
+sealed interface AddWidgetOutcome {
+    /** Widget [widgetId] is on the Home Page; its Resize Frame opens. */
+    data class Added(
+        val widgetId: Int,
+    ) : AddWidgetOutcome
+
+    data object NoRoom : AddWidgetOutcome
+
+    data object TooLarge : AddWidgetOutcome
+
+    data object Cancelled : AddWidgetOutcome
+}
 
 /** Add the widget of [provider] in [profile] at the first free spot of [zones], in order. */
 data class AddWidgetRequest(
@@ -45,16 +56,28 @@ class AddWidgetContract : ActivityResultContract<AddWidgetRequest, AddWidgetOutc
         resultCode: Int,
         intent: Intent?,
     ): AddWidgetOutcome =
-        intent
-            ?.getStringExtra(EXTRA_OUTCOME)
-            ?.let { name -> AddWidgetOutcome.entries.firstOrNull { it.name == name } }
-            ?: AddWidgetOutcome.Cancelled
+        when (intent?.getStringExtra(EXTRA_OUTCOME)) {
+            OUTCOME_ADDED ->
+                intent
+                    .getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                    .takeIf { it != AppWidgetManager.INVALID_APPWIDGET_ID }
+                    ?.let(AddWidgetOutcome::Added)
+                    ?: AddWidgetOutcome.Cancelled
+            OUTCOME_NO_ROOM -> AddWidgetOutcome.NoRoom
+            OUTCOME_TOO_LARGE -> AddWidgetOutcome.TooLarge
+            else -> AddWidgetOutcome.Cancelled
+        }
 
     internal companion object {
         const val EXTRA_PROVIDER = "provider"
         const val EXTRA_PROFILE = "profile"
         const val EXTRA_ZONES = "zones"
         const val EXTRA_OUTCOME = "outcome"
+        const val EXTRA_WIDGET_ID = "widget_id"
+        const val OUTCOME_ADDED = "added"
+        const val OUTCOME_NO_ROOM = "no_room"
+        const val OUTCOME_TOO_LARGE = "too_large"
+        const val OUTCOME_CANCELLED = "cancelled"
     }
 }
 
@@ -165,7 +188,7 @@ class AddWidgetActivity : ComponentActivity() {
         if (widgets.info(widgetId) == null) return finishWith(AddWidgetOutcome.Cancelled)
         lifecycleScope.launch {
             val placed = widgets.place(widgetId, targets, graph.homeGeometry.zones(this@AddWidgetActivity))
-            finishWith(if (placed is LayoutResult.Changed) AddWidgetOutcome.Added else placed.outcome())
+            finishWith(if (placed is LayoutResult.Changed) AddWidgetOutcome.Added(widgetId) else placed.outcome())
         }
     }
 
@@ -176,9 +199,19 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private fun finishWith(outcome: AddWidgetOutcome) {
-        if (outcome != AddWidgetOutcome.Added) discard()
+        if (outcome !is AddWidgetOutcome.Added) discard()
         widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-        setResult(RESULT_OK, Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, outcome.name))
+        val result =
+            when (outcome) {
+                is AddWidgetOutcome.Added ->
+                    Intent()
+                        .putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_ADDED)
+                        .putExtra(AddWidgetContract.EXTRA_WIDGET_ID, outcome.widgetId)
+                AddWidgetOutcome.NoRoom -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_NO_ROOM)
+                AddWidgetOutcome.TooLarge -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_TOO_LARGE)
+                AddWidgetOutcome.Cancelled -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_CANCELLED)
+            }
+        setResult(RESULT_OK, result)
         finish()
     }
 

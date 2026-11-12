@@ -346,6 +346,29 @@ class WidgetLayoutTest {
     }
 
     @Test
+    fun `the Resize Frame has handles only on the axes a widget can resize on`() {
+        val both = homePage(widget(1, HomeUpper, CellRect(0, 0, 2, 1)))
+        val vertical = homePage(widget(1, HomeUpper, CellRect(0, 0, 2, 1), bounds(CellSpan(2, 1), horizontal = false)))
+        val noRange =
+            homePage(widget(1, HomeUpper, CellRect(0, 0, 2, 2), bounds(CellSpan(2, 2), min = CellSpan(2, 1), max = CellSpan(2, 3))))
+        val fixed = homePage(widget(1, HomeUpper, CellRect(0, 0, 2, 1), SpanBounds.fixed(CellSpan(2, 1))))
+
+        assertEquals(ResizeEdge.entries.toSet(), both.resizeEdges(1))
+        assertEquals(setOf(ResizeEdge.Top, ResizeEdge.Bottom), vertical.resizeEdges(1))
+        assertEquals(setOf(ResizeEdge.Top, ResizeEdge.Bottom), noRange.resizeEdges(1))
+        assertEquals(emptySet<ResizeEdge>(), fixed.resizeEdges(1))
+        assertEquals(emptySet<ResizeEdge>(), both.resizeEdges(9))
+    }
+
+    @Test
+    fun `a widget below its min span gets handles on that axis even when it is locked`() {
+        val shrunk = bounds(CellSpan(2, 1), min = CellSpan(2, 1), max = CellSpan(2, 1), horizontal = false, vertical = false)
+        val layout = homePage(widget(1, HomeUpper, CellRect(0, 0, 1, 1), shrunk))
+
+        assertEquals(setOf(ResizeEdge.Left, ResizeEdge.Right), layout.resizeEdges(1))
+    }
+
+    @Test
     fun `undo puts a removed widget back on its exact cells`() {
         val layout = homePage(widget(1, HomeUpper, CellRect(1, 1, 2, 1)), widget(2, HomeLower, CellRect(0, 0, 1, 1)))
 

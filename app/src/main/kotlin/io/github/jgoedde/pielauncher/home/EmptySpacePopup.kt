@@ -152,7 +152,8 @@ internal fun EmptySpacePopup(
 /**
  * The popup of a long-pressed widget (PRD 7.2, Launcher3 `AppWidgetSystemShortcuts`), above or
  * below the widget it is placed in (its parent's bounds): "Remove", plus "Widget settings" when
- * the widget is reconfigurable.
+ * the widget is reconfigurable. Not focusable, so a touch outside it still reaches the Resize
+ * Frame drawn with it: a handle drag starts there, and a tap outside the frame ends Edit Mode.
  */
 @Composable
 internal fun WidgetPopup(
@@ -166,7 +167,7 @@ internal fun WidgetPopup(
             PopupItem(R.string.widget_remove, R.drawable.close, onRemove),
             PopupItem(R.string.widget_settings, R.drawable.settings, onWidgetSettings).takeIf { reconfigurable },
         )
-    LauncherPopup(items, onDismiss) { insets, shadowMargin -> WidgetPopupPositionProvider(insets, shadowMargin) }
+    LauncherPopup(items, onDismiss, focusable = false) { insets, shadowMargin -> WidgetPopupPositionProvider(insets, shadowMargin) }
 }
 
 /** A Launcher3-style popup card of [items], kept off the system bars and screen edges. */
@@ -174,6 +175,7 @@ internal fun WidgetPopup(
 private fun LauncherPopup(
     items: List<PopupItem>,
     onDismiss: () -> Unit,
+    focusable: Boolean = true,
     positionProvider: (PopupInsets, Int) -> PopupPositionProvider,
 ) {
     val density = LocalDensity.current
@@ -193,7 +195,7 @@ private fun LauncherPopup(
     Popup(
         popupPositionProvider = provider,
         onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
+        properties = PopupProperties(focusable = focusable),
     ) {
         AnimatedVisibility(visibleState = visible, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
             Surface(

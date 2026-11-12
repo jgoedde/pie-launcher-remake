@@ -101,6 +101,79 @@ class EditModeTest {
     }
 
     @Test
+    fun `a widget just added opens its Resize Frame without the popup`() {
+        assertEquals(EditMode.Selected(1, popupOpen = false), EditMode.Idle.added(1))
+        assertFalse(EditMode.Idle.added(1).pieEnabled)
+    }
+
+    @Test
+    fun `the popup can close while the Resize Frame stays open`() {
+        assertEquals(EditMode.Selected(1, popupOpen = false), EditMode.Idle.longPress(1).closePopup())
+        assertEquals(EditMode.Idle, EditMode.Idle.closePopup())
+    }
+
+    @Test
+    fun `dragging a handle resizes the selected widget and closes the popup`() {
+        val resizing =
+            EditMode.Idle
+                .longPress(1)
+                .startResize(layout, ResizeEdge.Bottom)
+                .resizeBy(75f)
+
+        val resize = (resizing as EditMode.Resizing).resize
+        assertEquals(ResizeEdge.Bottom, resize.edge)
+        assertEquals(CellSpan(2, 2), resize.span)
+        assertFalse(resizing.pieEnabled)
+    }
+
+    @Test
+    fun `letting go of a handle commits the new size and keeps the frame open`() {
+        val release =
+            EditMode.Idle
+                .longPress(1)
+                .startResize(layout, ResizeEdge.Bottom)
+                .resizeBy(75f)
+                .release()
+
+        assertEquals(EditMode.Selected(1, popupOpen = false), release.mode)
+        assertEquals(
+            CellRect(0, 0, 2, 2),
+            release.result
+                .changed()
+                .widget.cells,
+        )
+    }
+
+    @Test
+    fun `a handle drag that never passed the threshold changes nothing`() {
+        val release =
+            EditMode.Idle
+                .longPress(1)
+                .startResize(layout, ResizeEdge.Bottom)
+                .resizeBy(10f)
+                .release()
+
+        assertEquals(EditMode.Selected(1, popupOpen = false), release.mode)
+        assertEquals(LayoutResult.Unchanged, release.result)
+    }
+
+    @Test
+    fun `a resize only starts from a selected widget on an edge with a handle`() {
+        val fixed = homePage(widget(1, HomeUpper, CellRect(0, 0, 2, 1), SpanBounds.fixed(CellSpan(2, 1))))
+
+        assertEquals(EditMode.Idle, EditMode.Idle.startResize(layout, ResizeEdge.Right))
+        assertEquals(EditMode.Selected(1), EditMode.Idle.longPress(1).startResize(fixed, ResizeEdge.Right))
+    }
+
+    @Test
+    fun `back, Home or a tap outside closes the Resize Frame mid-resize`() {
+        val resizing = EditMode.Idle.longPress(1).startResize(layout, ResizeEdge.Right)
+
+        assertEquals(EditMode.Idle, resizing.leave())
+        assertEquals(resizing, resizing.longPress(2))
+    }
+
+    @Test
     fun `a move only starts from a selected widget that is on the Page`() {
         assertEquals(EditMode.Idle, EditMode.Idle.startMove(layout, nowMs = 0))
         assertEquals(EditMode.Selected(9), EditMode.Idle.longPress(9).startMove(layout, nowMs = 0))

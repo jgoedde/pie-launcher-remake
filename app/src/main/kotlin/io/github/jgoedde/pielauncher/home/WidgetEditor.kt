@@ -17,6 +17,7 @@ import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.ResizeEdge
 import io.github.jgoedde.pielauncher.core.home.WidgetDrag
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetRemoval
@@ -55,8 +56,9 @@ internal interface WidgetEditActions {
  * long-press wrapper's touch reports into Edit Mode transitions. The Home Page tells it its
  * geometry ([laidOut]) so window points can be mapped to Widget Zone cells.
  *
- * #60 hooks in at [EditMode.Selected] (draw the Resize Frame next to the popup) and #61 at
- * [startDrag] (a Widget Picker drag arriving over Home takes the same move path).
+ * In [EditMode.Selected] and [EditMode.Resizing] the Resize Frame is open ([frame]); its handle
+ * drags resize the widget and commit on release. #61 hooks in at [startDrag] (a Widget Picker
+ * drag arriving over Home takes the same move path).
  */
 @Stable
 internal class WidgetEditor(
@@ -85,9 +87,10 @@ internal class WidgetEditor(
     /** Widgets deleted for good, hidden until their rows are gone. */
     private var discarded by mutableStateOf(emptySet<Int>())
 
-    private var base = WidgetLayout(emptyMap(), emptyList())
-    private var zones: HomeZones? = null
-    private var pageOrigin = Offset.Zero
+    // State, so the Resize Frame follows the Page's layout and position.
+    private var base by mutableStateOf(WidgetLayout(emptyMap(), emptyList()))
+    private var zones by mutableStateOf<HomeZones?>(null)
+    private var pageOrigin by mutableStateOf(Offset.Zero)
 
     /** Whether the drag in progress is of a widget that offers "Widget settings". */
     var draggedIsReconfigurable by mutableStateOf(false)
@@ -125,10 +128,92 @@ internal class WidgetEditor(
     /** The touch reports of widget [id]'s long-press wrapper. */
     fun touchesOf(id: Int): WidgetTouchListener = Touches(id)
 
-    /** Back, Home, a tap outside the popup: Edit Mode ends; a drag under way springs back. */
+    /** Back, Home, a tap outside the Resize Frame: Edit Mode ends; a drag under way springs back, a resize commits. */
     fun leave() {
+        endResize()
         mode = mode.leave()
         endDrag()
+    }
+
+    /** Widget [id] was just added: its Resize Frame opens (Launcher3), once the widget shows. */
+    fun added(id: Int) {
+        mode = mode.added(id)
+    }
+
+    /** The popup closed; the Resize Frame stays open. */
+    fun closePopup() {
+        mode = mode.closePopup()
+    }
+
+    /** The widget whose Resize Frame is open, its popup open or not; null when no frame is open. */
+    val framed: Int?
+        get() =
+            when (val mode = mode) {
+                is EditMode.Selected -> mode.widgetId
+                is EditMode.Resizing -> mode.resize.widgetId
+                else -> null
+            }
+
+    /** The resize under way, for the Home Page to draw its preview. */
+    val resize get() = (mode as? EditMode.Resizing)?.resize
+
+    /** The open Resize Frame's bounds in window px: the widget's, or following the dragged handle. */
+    val frame: Rect?
+        get() {
+            val zones = zones ?: return null
+            val (zone, bounds) =
+                when (val mode = mode) {
+                    is EditMode.Selected ->
+                        shown(base).let { layout -> layout.widget(mode.widgetId)?.let { it.zone to layout.boundsOf(it) } }
+                    is EditMode.Resizing -> mode.resize.let { it.base.widget(it.widgetId)!!.zone to it.frame }
+                    else -> null
+                } ?: return null
+            val left = pageOrigin.x + bounds.left
+            val top = pageOrigin.y + zones.topPx(zone) + bounds.top
+            return Rect(left, top, left + bounds.width, top + bounds.height)
+        }
+
+    /** The edges of the open Resize Frame that get a handle. */
+    val frameEdges: Set<ResizeEdge>
+        get() =
+            when (val mode = mode) {
+                is EditMode.Selected -> shown(base).resizeEdges(mode.widgetId)
+                is EditMode.Resizing -> mode.resize.base.resizeEdges(mode.resize.widgetId)
+                else -> emptySet()
+            }
+
+    /**
+     * A finger went down at window point [at]; outside the open frame, grown by [margin] (the
+     * handles' reach), it closes the frame. True when it did, so the touch goes nowhere else.
+     */
+    fun touchDown(
+        at: Offset,
+        margin: Float,
+    ): Boolean {
+        if (mode !is EditMode.Selected) return false
+        val frame = frame ?: return false
+        if (frame.inflate(margin).contains(at)) return false
+        leave()
+        return true
+    }
+
+    /** A finger went down on the open frame's [edge] handle: the popup closes and a resize starts. */
+    fun startResize(edge: ResizeEdge) {
+        mode = mode.startResize(shown(base), edge)
+    }
+
+    /** The handle is [deltaPx] from where it went down; true when the widget's span just changed (a tick). */
+    fun resizeBy(deltaPx: Float): Boolean {
+        mode = mode.resizeBy(deltaPx)
+        return (mode as? EditMode.Resizing)?.resize?.ticked == true
+    }
+
+    /** The handle was let go: the new size is committed and the frame snaps to the widget. */
+    fun endResize() {
+        if (mode !is EditMode.Resizing) return
+        val release = mode.release()
+        mode = release.mode
+        commit(release.result)
     }
 
     /** "Remove" in the popup or on the drop-target bar: the widget disappears, with an undo. */
@@ -245,14 +330,19 @@ internal class WidgetEditor(
         private fun drop() {
             val release = mode.release()
             mode = release.mode
-            when (val result = release.result) {
-                is LayoutResult.Changed -> {
-                    committed = base to result.layout
-                    actions.save(result.layout)
-                }
-                is LayoutResult.Rejected -> actions.rejected(result.reason)
-                LayoutResult.Unchanged -> Unit
+            commit(release.result)
+        }
+    }
+
+    /** Shows and saves a committed drop or resize; reports a refused drop. */
+    private fun commit(result: LayoutResult) {
+        when (result) {
+            is LayoutResult.Changed -> {
+                committed = base to result.layout
+                actions.save(result.layout)
             }
+            is LayoutResult.Rejected -> actions.rejected(result.reason)
+            LayoutResult.Unchanged -> Unit
         }
     }
 }

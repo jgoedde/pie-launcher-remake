@@ -112,7 +112,9 @@ internal fun <W> HomePage(
             delay((due - SystemClock.uptimeMillis()).coerceAtLeast(0))
             editor.tick()
         }
-        val layout = drag?.preview ?: editor.shown(base)
+        // A resize redraws the widget at its new span, and its pushed neighbours, while the handle moves.
+        val resize = editor.resize
+        val layout = drag?.preview ?: resize?.preview ?: editor.shown(base)
         Column(
             Modifier.fillMaxSize().onGloballyPositioned {
                 origin[0] = it.positionInWindow()
@@ -125,6 +127,7 @@ internal fun <W> HomePage(
                     layout = layout,
                     zone = zoneId,
                     drag = drag,
+                    reordering = drag != null || resize != null,
                     widgetContent = widgetContent,
                     widgetOverlay = widgetOverlay,
                     modifier =
@@ -188,12 +191,14 @@ private const val REORDER_PREVIEW_MS = 300
  * One Widget Zone of [layout] holding its widgets on their cells. During a [drag] the dragged
  * widget keeps its cells but is not drawn (its picture follows the finger, and its view keeps
  * the touch); its target cells are outlined; neighbours slide to their temporary spots and wiggle.
+ * While [reordering] (a drag or a resize), neighbours slide rather than jump.
  */
 @Composable
 private fun WidgetZone(
     layout: WidgetLayout,
     zone: WidgetZoneId,
     drag: WidgetDrag?,
+    reordering: Boolean,
     widgetContent: WidgetContent,
     widgetOverlay: @Composable (LaidOutWidget) -> Unit,
     modifier: Modifier,
@@ -232,7 +237,7 @@ private fun WidgetZone(
                 val target = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt())
                 val position by animateIntOffsetAsState(
                     target,
-                    animationSpec = if (drag != null) tween(REORDER_ANIMATION_MS) else snap(),
+                    animationSpec = if (reordering) tween(REORDER_ANIMATION_MS) else snap(),
                     label = "reorder",
                 )
                 val wiggle = if (widget.id in moved) wiggleTowards(drag!!.base.widget(widget.id), widget, layout) else Offset.Zero
