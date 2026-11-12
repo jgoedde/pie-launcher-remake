@@ -12,6 +12,7 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.config.ConfigExporter
 import io.github.jgoedde.pielauncher.config.ImportRecordStore
 import io.github.jgoedde.pielauncher.config.PieConfigImporter
 import io.github.jgoedde.pielauncher.config.PieConfigStore
@@ -42,6 +43,7 @@ interface AppGraph {
     val notificationShade: NotificationShade
     val pieConfigStore: PieConfigStore
     val pieConfigImporter: PieConfigImporter
+    val configExporter: ConfigExporter
     val importRecordStore: ImportRecordStore
     val pieItemResolver: PieItemResolver
     val appScope: CoroutineScope

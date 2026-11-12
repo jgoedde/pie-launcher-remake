@@ -5,12 +5,14 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -20,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
+import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import java.io.IOException
 
@@ -40,6 +43,7 @@ class SettingsActivity : ComponentActivity() {
                     apps = graph.appsRepository.apps,
                     resolver = graph.pieItemResolver,
                     importer = graph.pieConfigImporter,
+                    exporter = graph.configExporter,
                 )
             }
         }
@@ -51,6 +55,12 @@ class SettingsActivity : ComponentActivity() {
 
     private val pickConfig =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(viewModel::import) }
+
+    private val createConfig =
+        registerForActivityResult(ActivityResultContracts.CreateDocument(JSON_TYPE)) { uri -> uri?.let(viewModel::exportConfig) }
+
+    private val createInventory =
+        registerForActivityResult(ActivityResultContracts.CreateDocument(JSON_TYPE)) { uri -> uri?.let(viewModel::exportInventory) }
 
     private val requestHome =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { refreshDefaultHome() }
@@ -75,6 +85,19 @@ class SettingsActivity : ComponentActivity() {
                 val status by viewModel.status.collectAsStateWithLifecycle()
                 val unavailable by viewModel.unavailable.collectAsStateWithLifecycle()
                 val importDialog by viewModel.importDialog.collectAsStateWithLifecycle()
+                val resetDialog by viewModel.resetDialog.collectAsStateWithLifecycle()
+
+                LaunchedEffect(Unit) {
+                    viewModel.exportOutcomes.collect { outcome ->
+                        val text =
+                            when (outcome) {
+                                ExportOutcome.ConfigExported -> R.string.export_config_done
+                                ExportOutcome.InventoryExported -> R.string.export_inventory_done
+                                ExportOutcome.Failed -> R.string.export_failed
+                            }
+                        Toast.makeText(this@SettingsActivity, text, Toast.LENGTH_SHORT).show()
+                    }
+                }
 
                 if (showLicenses) {
                     BackHandler { showLicenses = false }
@@ -92,6 +115,12 @@ class SettingsActivity : ComponentActivity() {
 
                             override fun importConfig() = pickConfig.launch(JSON_TYPES)
 
+                            override fun exportConfig() = createConfig.launch(CONFIG_FILE_NAME)
+
+                            override fun exportInventory() = createInventory.launch(INVENTORY_FILE_NAME)
+
+                            override fun resetConfig() = viewModel.askReset()
+
                             override fun openWallpaperStyle() =
                                 start(Intent(Intent.ACTION_SET_WALLPAPER).putExtra(WALLPAPER_LAUNCH_SOURCE, LAUNCH_SOURCE_LAUNCHER))
 
@@ -105,6 +134,12 @@ class SettingsActivity : ComponentActivity() {
                 }
                 if (showStatus) StatusDialog(status, unavailable, onDismiss = { showStatus = false })
                 ImportDialogHost(importDialog, onApply = viewModel::apply, onDismiss = viewModel::dismissImport)
+                ResetDialogHost(
+                    resetDialog,
+                    onConfirm = viewModel::confirmReset,
+                    onExportFirst = { createConfig.launch(CONFIG_FILE_NAME) },
+                    onDismiss = viewModel::dismissReset,
+                )
             }
         }
     }
@@ -130,6 +165,10 @@ class SettingsActivity : ComponentActivity() {
         const val TAG = "SettingsActivity"
         const val NOTICE_ASSET = "NOTICE"
         const val GITHUB_URL = "https://github.com/jgoedde/pie-launcher-remake"
+
+        const val JSON_TYPE = "application/json"
+        const val CONFIG_FILE_NAME = "pie-config.json"
+        const val INVENTORY_FILE_NAME = "pie-inventory.json"
 
         /** Some file managers label JSON as plain text or octet-stream. */
         val JSON_TYPES = arrayOf("application/json", "text/plain", "application/octet-stream")

@@ -82,6 +82,37 @@ class PieConfigStore(
             }
         }
 
+    /**
+     * Regenerates the Default Config (PRD 9.6) and makes it the active Pie Config. False when there
+     * are no launchable apps or the file cannot be written; nothing changes then.
+     */
+    suspend fun resetToDefault(): Boolean =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                val generated = generateDefault() ?: return@withLock false
+                write(PieConfigCodec.encode(generated)).also {
+                    if (it) {
+                        current.value = generated
+                        done.value = true
+                    }
+                }
+            }
+        }
+
+    /** The stored file as is, for the Pie Config export; null when there is none or it cannot be read. */
+    suspend fun storedBytes(): ByteArray? =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                if (!file.baseFile.exists()) return@withLock null
+                try {
+                    file.readFully()
+                } catch (e: IOException) {
+                    Log.e(TAG, "Cannot read the Pie Config", e)
+                    null
+                }
+            }
+        }
+
     private fun load(): PieConfig? {
         if (!file.baseFile.exists()) {
             val generated = generateDefault() ?: return null

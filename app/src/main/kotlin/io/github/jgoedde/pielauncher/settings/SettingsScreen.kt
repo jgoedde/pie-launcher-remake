@@ -29,6 +29,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -51,6 +52,12 @@ interface SettingsActions {
     fun showStatus()
 
     fun importConfig()
+
+    fun exportConfig()
+
+    fun exportInventory()
+
+    fun resetConfig()
 
     fun openWallpaperStyle()
 
@@ -93,6 +100,17 @@ fun SettingsScreen(
                             stringResource(R.string.settings_import_supporting),
                             actions::importConfig,
                         ),
+                        SettingsRow(
+                            stringResource(R.string.settings_export_config),
+                            stringResource(R.string.settings_export_config_supporting),
+                            actions::exportConfig,
+                        ),
+                        SettingsRow(
+                            stringResource(R.string.settings_export_inventory),
+                            stringResource(R.string.settings_export_inventory_supporting),
+                            actions::exportInventory,
+                        ),
+                        SettingsRow(stringResource(R.string.settings_reset), null, actions::resetConfig, destructive = true),
                     ),
                 )
             }
@@ -190,6 +208,8 @@ private data class SettingsRow(
     val headline: String,
     val supporting: String?,
     val onClick: () -> Unit,
+    /** Shown in `error` colour. */
+    val destructive: Boolean = false,
 )
 
 /** A category heading over its rows; first and last row more rounded, small gaps between rows. */
@@ -212,7 +232,9 @@ private fun SettingsGroup(
                 shapes = ListItemDefaults.segmentedShapes(index = i, count = rows.size),
                 supportingContent = row.supporting?.let { { Text(it) } },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(row.headline) }
+            ) {
+                Text(row.headline, color = if (row.destructive) MaterialTheme.colorScheme.error else Color.Unspecified)
+            }
         }
     }
 }

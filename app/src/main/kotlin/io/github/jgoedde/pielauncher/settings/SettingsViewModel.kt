@@ -3,6 +3,7 @@ package io.github.jgoedde.pielauncher.settings
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.jgoedde.pielauncher.config.ConfigExporter
 import io.github.jgoedde.pielauncher.config.ImportRecord
 import io.github.jgoedde.pielauncher.config.PieConfigImporter
 import io.github.jgoedde.pielauncher.core.config.ConfigError
@@ -12,6 +13,7 @@ import io.github.jgoedde.pielauncher.core.config.PieItem
 import io.github.jgoedde.pielauncher.pie.PieItemResolver
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -55,6 +58,18 @@ sealed interface ImportDialog {
     data object ApplyFailed : ImportDialog
 }
 
+/** The Reset to Default Config confirmation (PRD 10.3). */
+sealed interface ResetDialog {
+    data object Confirm : ResetDialog
+
+    data object Resetting : ResetDialog
+
+    data object Failed : ResetDialog
+}
+
+/** What an export ended in, shown briefly. */
+enum class ExportOutcome { ConfigExported, InventoryExported, Failed }
+
 class SettingsViewModel(
     config: StateFlow<PieConfig?>,
     loaded: StateFlow<Boolean>,
@@ -62,6 +77,7 @@ class SettingsViewModel(
     apps: StateFlow<List<LauncherApp>>,
     resolver: PieItemResolver,
     private val importer: PieConfigImporter,
+    private val exporter: ConfigExporter,
 ) : ViewModel() {
     /** Null until the Pie Config is decoded. */
     val status: StateFlow<ConfigStatus?> =
@@ -106,6 +122,41 @@ class SettingsViewModel(
 
     fun dismissImport() {
         dialog.value = null
+    }
+
+    private val reset = MutableStateFlow<ResetDialog?>(null)
+    val resetDialog: StateFlow<ResetDialog?> = reset.asStateFlow()
+
+    private val exports = Channel<ExportOutcome>(Channel.BUFFERED)
+    val exportOutcomes: Flow<ExportOutcome> = exports.receiveAsFlow()
+
+    fun exportConfig(uri: Uri) {
+        viewModelScope.launch {
+            exports.send(if (exporter.exportConfig(uri)) ExportOutcome.ConfigExported else ExportOutcome.Failed)
+        }
+    }
+
+    fun exportInventory(uri: Uri) {
+        viewModelScope.launch {
+            exports.send(if (exporter.exportInventory(uri)) ExportOutcome.InventoryExported else ExportOutcome.Failed)
+        }
+    }
+
+    /** Opens the confirmation; it stays open across "Export first". */
+    fun askReset() {
+        reset.value = ResetDialog.Confirm
+    }
+
+    fun confirmReset() {
+        if (reset.value != ResetDialog.Confirm) return
+        reset.value = ResetDialog.Resetting
+        viewModelScope.launch {
+            reset.value = if (importer.resetToDefault()) null else ResetDialog.Failed
+        }
+    }
+
+    fun dismissReset() {
+        reset.value = null
     }
 
     private fun describe(item: PieItem): String =

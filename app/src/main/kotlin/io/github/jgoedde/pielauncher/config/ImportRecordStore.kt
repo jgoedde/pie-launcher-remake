@@ -41,6 +41,14 @@ class ImportRecordStore(
         }
     }
 
+    /** Back to the Default Config: nothing imported. */
+    suspend fun clear() {
+        store.edit {
+            it.remove(IMPORTED_AT)
+            it.remove(WARNINGS)
+        }
+    }
+
     private fun encode(warnings: List<ConfigWarning>): String =
         JSONArray(warnings.map { JSONObject().put(PATH, it.path).put(MESSAGE, it.message) }).toString()
 

@@ -50,6 +50,13 @@ class PieConfigImporter(
         return true
     }
 
+    /** Replaces the active Pie Config with a freshly generated Default Config; false when that fails. */
+    suspend fun resetToDefault(): Boolean {
+        if (!store.resetToDefault()) return false
+        records.clear()
+        return true
+    }
+
     private fun read(uri: Uri): String {
         val stream = application.contentResolver.openInputStream(uri) ?: throw IOException("no content")
         val bytes = stream.use { it.readNBytes(MAX_BYTES + 1) }
