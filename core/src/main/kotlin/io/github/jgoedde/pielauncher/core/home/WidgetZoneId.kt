@@ -18,6 +18,3 @@ enum class WidgetZoneId {
         fun addOrder(first: WidgetZoneId?): List<WidgetZoneId> = listOfNotNull(first) + entries.filter { it != first }
     }
 }
-
-/** The Home Page is the leftmost Page. */
-const val HOME_PAGE = 0

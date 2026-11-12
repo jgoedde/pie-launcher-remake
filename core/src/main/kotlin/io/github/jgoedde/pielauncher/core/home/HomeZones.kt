@@ -2,6 +2,9 @@ package io.github.jgoedde.pielauncher.core.home
 
 import kotlin.math.roundToInt
 
+/** The Home Page is the leftmost Page: its index in a widget row. */
+const val HOME_PAGE = 0
+
 /**
  * The Home Page split into its two Widget Zones (PRD 3.2): the upper zone takes the height the
  * Pie Zone and the lower zone leave; the lower zone is exactly [LOWER_ZONE_ROWS] cell rows.
