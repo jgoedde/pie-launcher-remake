@@ -16,6 +16,7 @@ import android.view.ViewOutlineProvider
 import android.widget.TextView
 import androidx.core.view.children
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.home.OutlineBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetBackground
 import io.github.jgoedde.pielauncher.core.home.WidgetViewTree
 import kotlinx.coroutines.Dispatchers
@@ -122,6 +123,15 @@ internal class LauncherWidgetHostView(
         if (roundsCorners) {
             roundedBounds.set(0, 0, background.width, background.height)
             if (background !== this) offsetDescendantRectToMyCoords(background, roundedBounds)
+            // The outline replaces the clip to this view's bounds (Compose's AndroidView parent
+            // does not clip children), so a background larger than this view must not widen it.
+            val clamped =
+                WidgetBackground.outline(
+                    OutlineBounds(roundedBounds.left, roundedBounds.top, roundedBounds.right, roundedBounds.bottom),
+                    width,
+                    height,
+                )
+            roundedBounds.set(clamped.left, clamped.top, clamped.right, clamped.bottom)
         }
         invalidateOutline()
     }
