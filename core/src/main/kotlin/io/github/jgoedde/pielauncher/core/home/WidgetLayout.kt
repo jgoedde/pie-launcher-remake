@@ -38,9 +38,34 @@ data class SpanBounds(
     val resizesHorizontally: Boolean,
     val resizesVertically: Boolean,
 ) {
+    /** These bounds as ints, for a drag's ClipDescription extras: default, min, max spans, then the axes. */
+    fun toInts(): IntArray =
+        intArrayOf(
+            default.width,
+            default.height,
+            min.width,
+            min.height,
+            max.width,
+            max.height,
+            if (resizesHorizontally) 1 else 0,
+            if (resizesVertically) 1 else 0,
+        )
+
     companion object {
         /** Bounds that pin a widget to [span]: no resizing, no shrinking. */
         fun fixed(span: CellSpan) = SpanBounds(span, span, span, resizesHorizontally = false, resizesVertically = false)
+
+        /** The bounds [toInts] wrote; null when [ints] are not them. */
+        fun fromInts(ints: IntArray): SpanBounds? {
+            if (ints.size != 8) return null
+            return SpanBounds(
+                CellSpan(ints[0], ints[1]),
+                CellSpan(ints[2], ints[3]),
+                CellSpan(ints[4], ints[5]),
+                resizesHorizontally = ints[6] != 0,
+                resizesVertically = ints[7] != 0,
+            )
+        }
     }
 }
 
@@ -57,7 +82,18 @@ data class DraggedWidget(
     val id: Int,
     val span: CellSpan,
     val bounds: SpanBounds,
-)
+) {
+    /** Whether this is a new widget, not yet bound or placed (dragged in from the Widget Picker or a Pin Request). */
+    val isNew: Boolean get() = id == NEW_ID
+
+    companion object {
+        /** The id of a new widget while it is dragged; real widget ids are positive. */
+        const val NEW_ID = -1
+
+        /** A new widget with [bounds], dragged at its default span. */
+        fun new(bounds: SpanBounds) = DraggedWidget(NEW_ID, bounds.default, bounds)
+    }
+}
 
 /** Where a dragged widget is over. */
 sealed interface DragTarget {
@@ -259,6 +295,25 @@ class WidgetLayout(
             size += step
         }
         return LayoutResult.Unchanged
+    }
+
+    /**
+     * Places the now bound widget [id] where it was dropped as a new widget ([WidgetDrop]),
+     * moving the neighbours that drop moved. [Rejection.NoRoom] when the layout changed meanwhile
+     * so that the cells are no longer free.
+     */
+    fun place(
+        id: Int,
+        bounds: SpanBounds,
+        drop: WidgetDrop,
+    ): LayoutResult {
+        val grid = grids[drop.zone] ?: return LayoutResult.Rejected(Rejection.NoRoom)
+        val zone = inZone(drop.zone).filter { it.id != id }.map { it.id to (drop.moved[it.id] ?: it.cells) }
+        val inGrid = drop.cells.column + drop.cells.width <= grid.columns && drop.cells.row + drop.cells.height <= grid.rows
+        val overlaps = zone.any { (_, cells) -> cells.overlaps(drop.cells) }
+        val neighboursOverlap = zone.any { (a, one) -> zone.any { (b, other) -> a < b && one.overlaps(other) } }
+        if (!inGrid || overlaps || neighboursOverlap) return LayoutResult.Rejected(Rejection.NoRoom)
+        return commit(LaidOutWidget(id, drop.zone, drop.cells, bounds), drop.moved)
     }
 
     /** Takes widget [id] out; [LayoutResult.Changed.widget] is what [undo] puts back. */
