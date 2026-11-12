@@ -61,6 +61,9 @@ class AppsRepository(
 
     private val changes = launcherChanges().shareIn(appScope, SharingStarted.Eagerly, replay = 1)
 
+    /** Emits once right away, then on every package, Shortcut and locale change, for lookups that depend on any of them. */
+    val launcherChanged: Flow<Unit> = changes.map { }
+
     private val installs = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
     /** Packages freshly installed in the main profile (not updates), as they arrive. */

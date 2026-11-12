@@ -35,3 +35,11 @@ Material Symbols (app/src/main/res/drawable/search.xml, search_off.xml,
 pie_unavailable.xml, arrow_back.xml)
 Copyright Google LLC, Apache License 2.0
 https://github.com/google/material-design-icons
+
+Material Symbols Rounded font and codepoints
+(app/src/main/res/font/material_symbols_rounded.ttf, a static instance of
+MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf at FILL=1 GRAD=0 opsz=24
+wght=400; core/src/main/resources/io/github/jgoedde/pielauncher/core/config/
+material-symbols-rounded.codepoints, unmodified)
+Copyright Google LLC, Apache License 2.0
+https://github.com/google/material-design-icons/tree/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/variablefont

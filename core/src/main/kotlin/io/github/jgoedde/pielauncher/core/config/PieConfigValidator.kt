@@ -76,7 +76,9 @@ internal class PieConfigValidator {
         obj["color"]?.string(path.key("color"))?.let {
             if (PieColor.parse(it) == null) error(path.key("color"), "must be #RRGGBB or one of primary, secondary, tertiary")
         }
-        obj["icon"]?.string(path.key("icon"), pattern = ICON, patternText = "a Material Symbols name (a-z, 0-9, _)")
+        obj["icon"]?.string(path.key("icon"), pattern = ICON, patternText = "a Material Symbols name (a-z, 0-9, _)")?.let {
+            if (MaterialSymbols.codepoint(it) == null) error(path.key("icon"), "unknown Material Symbols Rounded name \"$it\"")
+        }
         obj["items"]?.arrayAt(path.key("items"), min = 1, max = MAX_ITEMS)?.forEachIndexed { i, item ->
             item(item, path.key("items").index(i), owner = id)
         }

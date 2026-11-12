@@ -34,8 +34,16 @@ data class PieMetrics(
     val centreRadius: Float,
     /** Half a Pie Item's drawn size. */
     val itemRadius: Float,
-    /** Space kept between the ring and the window edges. */
+    /** Space kept between the ring (or a Shortcut list card) and the window edges. */
     val margin: Float,
+    /** Shortcut list card width. */
+    val cardWidth: Float = 184f,
+    /** One Shortcut row in the card. */
+    val cardRowHeight: Float = 44f,
+    /** Space above the first and below the last row of the card. */
+    val cardPadding: Float = 6f,
+    /** Space between a Pie Item's icon and its Shortcut list card. */
+    val cardGap: Float = 10f,
 ) {
     /** The Inner Circle: once the finger is outside it, only its direction counts. */
     val innerRadius: Float get() = radius - captureRadius
@@ -52,6 +60,10 @@ data class PieMetrics(
                 centreRadius = 26f * density,
                 itemRadius = 26f * density,
                 margin = 8f * density,
+                cardWidth = 184f * density,
+                cardRowHeight = 44f * density,
+                cardPadding = 6f * density,
+                cardGap = 10f * density,
             )
     }
 }
