@@ -66,9 +66,10 @@ fun HomePage(
     ) {
         val density = LocalDensity.current
         val pieZonePx = with(density) { HomePageLayout.PieZoneHeight.toPx() }
+        val cellGapPx = with(density) { CellGrid.CELL_GAP_DP.dp.toPx() }
         val zones =
-            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx) {
-                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx)
+            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx) {
+                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx)
             }
         LaunchedEffect(zones) { onZonesLaidOut(zones) }
         Column(Modifier.fillMaxSize()) {
@@ -127,9 +128,5 @@ private fun WidgetZone(
     }
 }
 
-/** The px bounds of [cells] inside the zone, rows starting below the zone's top padding. */
-private fun CellGrid.boundsOf(cells: CellRect): Rect {
-    val left = cells.column * cellWidth
-    val top = verticalPadding + cells.row * cellHeight
-    return Rect(left, top, left + cells.width * cellWidth, top + cells.height * cellHeight)
-}
+/** The px bounds of [cells] inside the zone, gaps between cells included. */
+private fun CellGrid.boundsOf(cells: CellRect): Rect = bounds(cells).let { Rect(it.left, it.top, it.left + it.width, it.top + it.height) }

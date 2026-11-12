@@ -91,6 +91,9 @@ class WidgetHost(
         }
     }
 
+    /** Called when the Home Activity is destroyed: its widget views must not outlive it. */
+    fun releaseViews() = host.releaseViews()
+
     fun allocateId(): Int = host.allocateAppWidgetId()
 
     fun deleteId(id: Int) = host.deleteAppWidgetId(id)
@@ -101,7 +104,8 @@ class WidgetHost(
         id: Int,
         profile: UserHandle,
         provider: ComponentName,
-    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, null)
+        options: Bundle? = null,
+    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, options)
 
     fun createView(
         context: Context,

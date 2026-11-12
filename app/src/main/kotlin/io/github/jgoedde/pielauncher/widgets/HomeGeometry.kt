@@ -6,6 +6,7 @@ import android.view.WindowManager
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.home.HomePageLayout
@@ -38,6 +39,9 @@ class HomeGeometry {
             }
         }
 
+    /** The grid widgets are sized against: the largest Widget Zone, in dp. */
+    fun catalogGrid(context: Context): CatalogGrid = zones(context).catalogGrid(context.resources.displayMetrics.density)
+
     /** Full window minus the vertical mandatory gesture insets, as in `HomePage`. */
     private fun computed(context: Context): HomeZones {
         val metrics = context.getSystemService(WindowManager::class.java).maximumWindowMetrics
@@ -47,6 +51,7 @@ class HomeGeometry {
             widthPx = metrics.bounds.width().toFloat(),
             heightPx = (metrics.bounds.height() - insets.top - insets.bottom).toFloat(),
             pieZoneHeightPx = HomePageLayout.PieZoneHeight.value * density,
+            cellGapPx = CellGrid.CELL_GAP_DP * density,
         )
     }
 }

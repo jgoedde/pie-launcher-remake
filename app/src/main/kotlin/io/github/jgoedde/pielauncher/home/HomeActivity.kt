@@ -46,6 +46,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.home.CellSpan
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
 import io.github.jgoedde.pielauncher.drawer.DrawerEntry
@@ -189,8 +190,15 @@ class HomeActivity : ComponentActivity() {
                                     }
                                 }),
                             widgets = widgets,
-                            widgetContent = { widget, width, height ->
-                                HostedWidget(graph.widgetHost, widget.appWidgetId, width, height, Modifier.fillMaxSize())
+                            widgetContent = { widget, _, _ ->
+                                HostedWidget(
+                                    host = graph.widgetHost,
+                                    appWidgetId = widget.appWidgetId,
+                                    span = CellSpan(widget.cells.width, widget.cells.height),
+                                    grid = graph.homeGeometry.catalogGrid(this@HomeActivity),
+                                    onLightBackground = wallpaperWantsDarkIcons.value,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             },
                             onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
                             onZonesLaidOut = graph.homeGeometry::report,
@@ -314,6 +322,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         WallpaperManager.getInstance(this).removeOnColorsChangedListener(wallpaperColorsListener)
+        graph.widgetHost.releaseViews()
         super.onDestroy()
     }
 }
