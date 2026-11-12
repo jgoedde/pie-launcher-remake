@@ -1,5 +1,6 @@
 package io.github.jgoedde.pielauncher.core.home
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -86,5 +87,34 @@ class WidgetBackgroundTest {
         assertTrue(WidgetBackground.optsOut(View("bg", backgroundId = true, clipsToOutline = true), tree))
         assertFalse(WidgetBackground.optsOut(View("bg", backgroundId = true), tree))
         assertFalse(WidgetBackground.optsOut(View("card", draws = true, clipsToOutline = true), tree))
+    }
+
+    @Test
+    fun `a background inside the host is the outline`() {
+        val inside = OutlineBounds(10, 20, 90, 80)
+
+        assertEquals(inside, WidgetBackground.outline(inside, hostWidth = 100, hostHeight = 100))
+    }
+
+    @Test
+    fun `a background larger than the host is clamped to the host`() {
+        // DeskClock's analog clock preview: a 998 px background centred in a 519 px host.
+        val oversized = OutlineBounds(-239, -239, 759, 759)
+
+        assertEquals(OutlineBounds(0, 0, 519, 519), WidgetBackground.outline(oversized, hostWidth = 519, hostHeight = 519))
+    }
+
+    @Test
+    fun `a background sticking out on one side is clamped on that side only`() {
+        val sticking = OutlineBounds(10, -5, 120, 80)
+
+        assertEquals(OutlineBounds(10, 0, 100, 80), WidgetBackground.outline(sticking, hostWidth = 100, hostHeight = 100))
+    }
+
+    @Test
+    fun `a background entirely outside the host leaves the host as the outline`() {
+        val outside = OutlineBounds(150, 150, 200, 200)
+
+        assertEquals(OutlineBounds(0, 0, 100, 100), WidgetBackground.outline(outside, hostWidth = 100, hostHeight = 100))
     }
 }

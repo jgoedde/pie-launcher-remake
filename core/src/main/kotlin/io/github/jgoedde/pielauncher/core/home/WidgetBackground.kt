@@ -16,6 +16,14 @@ interface WidgetViewTree<V> {
     fun clipsToOutline(view: V): Boolean
 }
 
+/** A rectangle in pixels, in a widget host's coordinates; [right] and [bottom] are exclusive. */
+data class OutlineBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+)
+
 /**
  * Finds the view a widget's rounded corners are fitted to (Launcher3 `RoundedCornerEnforcement`).
  */
@@ -43,6 +51,24 @@ object WidgetBackground {
         background: V,
         tree: WidgetViewTree<V>,
     ): Boolean = tree.hasBackgroundId(background) && tree.clipsToOutline(background)
+
+    /**
+     * The rounded-corner outline of a widget whose [background] has these bounds in its host's
+     * coordinates: the background clamped to the host's [hostWidth] × [hostHeight], so a
+     * background larger than the host (fixed-size content, e.g. DeskClock's analog clock preview)
+     * never draws past the host. A background entirely outside the host leaves the whole host.
+     */
+    fun outline(
+        background: OutlineBounds,
+        hostWidth: Int,
+        hostHeight: Int,
+    ): OutlineBounds {
+        val left = background.left.coerceIn(0, hostWidth)
+        val top = background.top.coerceIn(0, hostHeight)
+        val right = background.right.coerceIn(0, hostWidth)
+        val bottom = background.bottom.coerceIn(0, hostHeight)
+        return if (left < right && top < bottom) OutlineBounds(left, top, right, bottom) else OutlineBounds(0, 0, hostWidth, hostHeight)
+    }
 
     private fun <V> collectMarked(
         view: V,
