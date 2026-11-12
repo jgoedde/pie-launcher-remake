@@ -8,6 +8,7 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
+import android.os.UserHandle
 import android.util.Log
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -98,8 +99,9 @@ class WidgetHost(
 
     fun bindIfAllowed(
         id: Int,
+        profile: UserHandle,
         provider: ComponentName,
-    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, provider)
+    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, null)
 
     fun createView(
         context: Context,
@@ -146,6 +148,12 @@ class WidgetHost(
             )
             true
         }
+
+    /** Takes a placed widget back out: drops its row and deletes its id. */
+    suspend fun remove(id: Int) {
+        dao.delete(listOf(id))
+        host.deleteAppWidgetId(id)
+    }
 
     /** Startup reconcile (PRD 7.1): deletes host ids with no row and rows with no host id. */
     suspend fun reconcile() {

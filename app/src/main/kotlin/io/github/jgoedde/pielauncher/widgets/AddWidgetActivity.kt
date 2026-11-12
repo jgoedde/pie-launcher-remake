@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContract
@@ -105,9 +106,8 @@ class AddWidgetActivity : ComponentActivity() {
         // The picker normally binds the widget itself; if it did not, bind it here.
         val provider =
             data?.getParcelableExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, ComponentName::class.java)
-                ?: data?.component
                 ?: return finishWith(AddWidgetOutcome.Cancelled)
-        if (widgets.bindIfAllowed(widgetId, provider)) return onBound()
+        if (widgets.bindIfAllowed(widgetId, Process.myUserHandle(), provider)) return onBound()
         startActivityForResult(
             Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
@@ -143,9 +143,17 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private fun onConfigured() {
+        // Gone when the process died meanwhile and the startup reconcile deleted the unplaced id.
+        if (widgets.info(widgetId) == null) return finishWith(AddWidgetOutcome.Cancelled)
         lifecycleScope.launch {
             finishWith(if (widgets.place(widgetId, targets)) AddWidgetOutcome.Added else AddWidgetOutcome.NoSpace)
         }
+    }
+
+    /** Home clears the launcher task, destroying this activity without a result: that is a cancel too. */
+    override fun onDestroy() {
+        if (isFinishing && widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) widgets.deleteId(widgetId)
+        super.onDestroy()
     }
 
     private fun finishWith(outcome: AddWidgetOutcome) {

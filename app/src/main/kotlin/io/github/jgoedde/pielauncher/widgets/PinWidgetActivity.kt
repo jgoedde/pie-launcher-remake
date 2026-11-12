@@ -89,7 +89,7 @@ class PinWidgetActivity : ComponentActivity() {
     private fun add() {
         val info = request?.getAppWidgetProviderInfo(this) ?: return cancel()
         pendingId = widgets.allocateId()
-        if (widgets.bindIfAllowed(pendingId, info.provider)) return accept()
+        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider)) return accept()
         bind.launch(
             Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingId)
@@ -98,28 +98,40 @@ class PinWidgetActivity : ComponentActivity() {
         )
     }
 
+    /**
+     * Places the bound widget first and accepts the request only once it has a spot, so the
+     * requesting app never hears "added" for a widget that found no room.
+     */
     private fun accept() {
         val pin = request ?: return cancel()
         val id = pendingId
-        val accepted =
-            try {
-                pin.isValid && pin.accept(bundleOf(AppWidgetManager.EXTRA_APPWIDGET_ID to id))
-            } catch (e: IllegalStateException) {
-                Log.w(TAG, "Cannot accept widget Pin Request", e)
-                false
-            }
-        if (!accepted) return cancel()
         val label = sheet?.label
         lifecycleScope.launch {
-            if (widgets.place(id, targets)) {
-                pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
-                Toast.makeText(application, getString(R.string.pin_widget_added, label), Toast.LENGTH_SHORT).show()
-                finish()
-            } else {
+            if (!widgets.place(id, targets)) {
                 Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
-                cancel()
+                return@launch cancel()
             }
+            val accepted =
+                try {
+                    pin.isValid && pin.accept(bundleOf(AppWidgetManager.EXTRA_APPWIDGET_ID to id))
+                } catch (e: IllegalStateException) {
+                    Log.w(TAG, "Cannot accept widget Pin Request", e)
+                    false
+                }
+            pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
+            if (accepted) {
+                Toast.makeText(application, getString(R.string.pin_widget_added, label), Toast.LENGTH_SHORT).show()
+            } else {
+                widgets.remove(id)
+            }
+            finish()
         }
+    }
+
+    /** Destroyed mid-flow (e.g. by Home) without Add finishing: the bound id must not leak. */
+    override fun onDestroy() {
+        if (isFinishing && pendingId != AppWidgetManager.INVALID_APPWIDGET_ID) widgets.deleteId(pendingId)
+        super.onDestroy()
     }
 
     private fun cancel() {
