@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.collectLatest
  * consumes the whole gesture, so it never changes the Page or opens the Drawer or shade. While the
  * Pie is open the Hover Delay is checked every frame, since a still finger sends no moves.
  *
- * Haptics: a light tick on each hover enter (Pie Item or Shortcut row), a stronger one on a Layer
+ * Haptics: a click on each hover enter (Pie Item or Shortcut row), a heavy click on a Layer
  * Switch and on a Shortcut list opening, and a confirm when [onLaunch] started the release target.
  */
 @Composable
@@ -76,8 +76,8 @@ private fun HapticFeedback.react(event: PieEvent?) {
     val type =
         when (event) {
             null -> return
-            is PieEvent.HoverEntered, is PieEvent.ShortcutHovered -> HapticFeedbackType.SegmentFrequentTick
-            PieEvent.LayerSwitched, is PieEvent.ShortcutsOpened -> HapticFeedbackType.GestureThresholdActivate
+            is PieEvent.HoverEntered, is PieEvent.ShortcutHovered -> HapticFeedbackType.VirtualKey
+            PieEvent.LayerSwitched, is PieEvent.ShortcutsOpened -> HapticFeedbackType.LongPress
         }
     performHapticFeedback(type)
 }
