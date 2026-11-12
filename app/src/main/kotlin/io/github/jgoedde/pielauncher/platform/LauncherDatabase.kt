@@ -1,5 +1,6 @@
 package io.github.jgoedde.pielauncher.platform
 
+import androidx.room.AutoMigration
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -15,12 +16,18 @@ import io.github.jgoedde.pielauncher.core.shortcuts.ShortcutKey
 import io.github.jgoedde.pielauncher.core.shortcuts.StoredPin
 import kotlinx.coroutines.flow.Flow
 
-/** App Drawer state (ADR 0002): pinned Shortcut records and New Badges. */
-@Database(entities = [PinnedShortcutRow::class, NewBadgeRow::class], version = 1)
+/** App Drawer state and the widget layout (ADR 0002): pinned Shortcut records, New Badges, widgets. */
+@Database(
+    entities = [PinnedShortcutRow::class, NewBadgeRow::class, WidgetRow::class],
+    version = 2,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
+)
 abstract class LauncherDatabase : RoomDatabase() {
     abstract fun pinnedShortcuts(): PinnedShortcutDao
 
     abstract fun newBadges(): NewBadgeDao
+
+    abstract fun widgets(): WidgetDao
 }
 
 /** A Shortcut this launcher pinned, kept even while the system cannot report it (ADR 0002, PRD 7.7). */
@@ -79,4 +86,36 @@ interface NewBadgeDao {
 
     @Query("DELETE FROM new_badge WHERE added_at_millis <= :cutoffMillis")
     suspend fun deleteAddedUpTo(cutoffMillis: Long)
+}
+
+/**
+ * One hosted widget's placement (PRD 11): its `appWidgetId`, provider, Page, Widget Zone and the
+ * cells it covers. [zone] is a [io.github.jgoedde.pielauncher.widgets.WidgetZoneId] name.
+ */
+@Entity(tableName = "widget")
+data class WidgetRow(
+    @PrimaryKey @ColumnInfo(name = "app_widget_id") val appWidgetId: Int,
+    /** `ComponentName.flattenToString()`. */
+    val provider: String,
+    val page: Int,
+    val zone: String,
+    val column: Int,
+    val row: Int,
+    val width: Int,
+    val height: Int,
+)
+
+@Dao
+interface WidgetDao {
+    @Query("SELECT * FROM widget")
+    fun observeAll(): Flow<List<WidgetRow>>
+
+    @Query("SELECT * FROM widget")
+    suspend fun all(): List<WidgetRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(row: WidgetRow)
+
+    @Query("DELETE FROM widget WHERE app_widget_id IN (:ids)")
+    suspend fun delete(ids: Collection<Int>)
 }

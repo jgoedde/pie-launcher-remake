@@ -9,6 +9,13 @@
     <!-- The App Drawer's Uninstall menu item hands off to the system uninstaller (ACTION_DELETE). -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
+    <!-- Without it getInstalledProviders() lists only system widget providers (PRD 7.1). -->
+    <queries>
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".PieLauncherApplication"
         android:allowBackup="false"
@@ -75,6 +82,25 @@
             android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.content.pm.action.CONFIRM_PIN_SHORTCUT" />
+            </intent-filter>
+        </activity>
+
+        <!-- The widget-add trampoline (PRD 7.4): picker, bind and configure results land here. -->
+        <activity
+            android:name=".widgets.AddWidgetActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.PieLauncher.Trampoline" />
+
+        <!-- App-initiated widget pinning (requestPinAppWidget, PRD 7.6): a confirmation sheet. -->
+        <activity
+            android:name=".widgets.PinWidgetActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.PieLauncher.Trampoline">
+            <intent-filter>
+                <action android:name="android.content.pm.action.CONFIRM_PIN_APPWIDGET" />
             </intent-filter>
         </activity>
     </application>

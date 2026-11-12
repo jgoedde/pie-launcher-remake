@@ -2,14 +2,17 @@ package io.github.jgoedde.pielauncher.home
 
 import android.app.WallpaperColors
 import android.app.WallpaperManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -18,13 +21,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -32,9 +39,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
@@ -58,10 +69,23 @@ import io.github.jgoedde.pielauncher.platform.LauncherApp
 import io.github.jgoedde.pielauncher.platform.PinnedShortcut
 import io.github.jgoedde.pielauncher.platform.ShortcutPins
 import io.github.jgoedde.pielauncher.platform.entryKey
+import io.github.jgoedde.pielauncher.platform.wallpaperPickerIntent
+import io.github.jgoedde.pielauncher.settings.SettingsActivity
+import io.github.jgoedde.pielauncher.widgets.AddWidgetContract
+import io.github.jgoedde.pielauncher.widgets.AddWidgetOutcome
+import io.github.jgoedde.pielauncher.widgets.HostedWidget
+import io.github.jgoedde.pielauncher.widgets.WidgetZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+/** An open empty-space menu: the long-pressed Widget Zone and the press point inside it. */
+private data class EmptySpaceMenu(
+    val zone: WidgetZoneId,
+    val at: Offset,
+)
 
 class HomeActivity : ComponentActivity() {
     private val graph by lazy { (application as PieLauncherApplication).graph }
@@ -129,7 +153,21 @@ class HomeActivity : ComponentActivity() {
                     val pie = rememberPieController()
                     LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
 
-                    LaunchedEffect(drawer) { homePresses.collect { drawer.close() } }
+                    var emptySpaceMenu by remember { mutableStateOf<EmptySpaceMenu?>(null) }
+                    val addWidget =
+                        rememberLauncherForActivityResult(AddWidgetContract()) { outcome ->
+                            if (outcome == AddWidgetOutcome.NoSpace) {
+                                scope.launch { snackbars.showSnackbar(getString(R.string.widget_no_space)) }
+                            }
+                        }
+                    val widgets by graph.widgetHost.widgets.collectAsStateWithLifecycle()
+
+                    LaunchedEffect(drawer) {
+                        homePresses.collect {
+                            emptySpaceMenu = null
+                            drawer.close()
+                        }
+                    }
 
                     val drawerCoversBars by remember(drawer) { derivedStateOf { drawer.progress > 0.5f } }
                     val darkIcons = if (drawerCoversBars) !isSystemInDarkTheme() else wallpaperWantsDarkIcons.value
@@ -145,7 +183,7 @@ class HomeActivity : ComponentActivity() {
                         Modifier
                             .fillMaxSize()
                             .onSizeChanged { drawer.travelPx = it.height.toFloat() }
-                            .excludesBackGestureAtEdges(enabled = !drawer.isShown),
+                            .excludesBackGestureAtEdges(enabled = !drawer.isShown && emptySpaceMenu == null),
                     ) {
                         HomePage(
                             drawer,
@@ -157,6 +195,23 @@ class HomeActivity : ComponentActivity() {
                                         is LaunchTarget.Shortcut -> graph.appLauncher.launch(target.shortcut)
                                     }
                                 }),
+                            widgets = widgets,
+                            widgetContent = { widget, width, height ->
+                                HostedWidget(graph.widgetHost, widget.appWidgetId, width, height, Modifier.fillMaxSize())
+                            },
+                            onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
+                            onZonesLaidOut = graph.homeGeometry::report,
+                            zoneOverlay = { zone ->
+                                emptySpaceMenu?.takeIf { it.zone == zone }?.let { menu ->
+                                    EmptySpaceMenuPopup(
+                                        at = menu.at,
+                                        onDismiss = { emptySpaceMenu = null },
+                                        onAddWidget = { addWidget.launch(zone) },
+                                        onWallpaper = { start(wallpaperPickerIntent()) },
+                                        onSettings = { start(Intent(this@HomeActivity, SettingsActivity::class.java)) },
+                                    )
+                                }
+                            },
                         )
                         AppDrawer(
                             state = drawer,
@@ -241,6 +296,24 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        graph.widgetHost.startListening()
+    }
+
+    override fun onStop() {
+        graph.widgetHost.stopListening()
+        super.onStop()
+    }
+
+    private fun start(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "Nothing handles $intent", e)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePresses.tryEmit(Unit)
@@ -249,6 +322,31 @@ class HomeActivity : ComponentActivity() {
     override fun onDestroy() {
         WallpaperManager.getInstance(this).removeOnColorsChangedListener(wallpaperColorsListener)
         super.onDestroy()
+    }
+}
+
+private const val TAG = "HomeActivity"
+
+/** The empty-space menu (PRD 7.2), opened above and left of the press like the Drawer's menu. */
+@Composable
+private fun EmptySpaceMenuPopup(
+    at: Offset,
+    onDismiss: () -> Unit,
+    onAddWidget: () -> Unit,
+    onWallpaper: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    fun run(action: () -> Unit) {
+        onDismiss()
+        action()
+    }
+    // A zero-size anchor at the press: the menu's end edge sits at the touch X, its bottom on the touch Y.
+    Box(Modifier.offset { IntOffset(0, at.y.roundToInt()) }) {
+        ThumbMenu(pressX = at.x.roundToInt(), onDismiss = onDismiss) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_add_widget)) }, onClick = { run(onAddWidget) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_wallpaper)) }, onClick = { run(onWallpaper) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.home_menu_settings)) }, onClick = { run(onSettings) })
+        }
     }
 }
 

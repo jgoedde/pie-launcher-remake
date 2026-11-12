@@ -65,6 +65,16 @@
     <string name="import_rejected_title">Cannot import this file</string>
     <string name="import_rejected_text">Nothing was changed. Fix these errors and import again:</string>
     <string name="unavailable_item">%1$s, item %2$d: %3$s</string>
+    <string name="home_menu_add_widget">Add widget</string>
+    <string name="home_menu_wallpaper">Wallpaper</string>
+    <string name="home_menu_settings">Settings</string>
+    <string name="widget_no_space">No space</string>
+    <string name="widget_error">Widget can’t be shown</string>
+    <string name="pin_widget_title">Add to Home Page</string>
+    <string name="pin_widget_size">%1$d × %2$d</string>
+    <string name="pin_widget_add">Add</string>
+    <string name="pin_widget_cancel">Cancel</string>
+    <string name="pin_widget_added">‘%1$s’ added to Home Page</string>
     <plurals name="layers">
         <item quantity="one">%d Layer</item>
         <item quantity="other">%d Layers</item>
