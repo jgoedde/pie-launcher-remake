@@ -39,6 +39,8 @@ android {
         versionName = semver?.let { (major, minor, patch) -> "$major.$minor.$patch" } ?: "0.0.0-dev"
         versionCode = semver?.let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch } ?: 1
         manifestPlaceholders["appLabel"] = "Pie Launcher"
+        // The git tag as is; the Pie Config $schema URL points at spec/ at this tag.
+        buildConfigField("String", "VERSION_TAG", versionTag?.let { "\"$it\"" } ?: "null")
     }
 
     signingConfigs {
@@ -73,6 +75,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

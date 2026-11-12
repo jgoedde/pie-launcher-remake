@@ -3,6 +3,7 @@ package io.github.jgoedde.pielauncher.settings
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.jgoedde.pielauncher.config.ConfigExporter
 import io.github.jgoedde.pielauncher.config.ImportRecord
 import io.github.jgoedde.pielauncher.config.PieConfigImporter
 import io.github.jgoedde.pielauncher.core.config.ConfigError
@@ -42,8 +43,6 @@ data class UnavailableItem(
 sealed interface ImportDialog {
     data object Checking : ImportDialog
 
-    data object Applying : ImportDialog
-
     data class Review(
         val accepted: PieConfigImport.Accepted,
     ) : ImportDialog
@@ -51,9 +50,19 @@ sealed interface ImportDialog {
     data class Rejected(
         val errors: List<ConfigError>,
     ) : ImportDialog
-
-    data object ApplyFailed : ImportDialog
 }
+
+/** A Pie Config task whose progress and outcome the task pill shows. */
+enum class SettingsTask { Import, ExportConfig, ExportInventory, Reset }
+
+enum class TaskState { Working, Done, Failed }
+
+/** One run of [task]; [run] tells a repeated run of the same task apart. */
+data class TaskFeedback(
+    val run: Long,
+    val task: SettingsTask,
+    val state: TaskState,
+)
 
 class SettingsViewModel(
     config: StateFlow<PieConfig?>,
@@ -62,6 +71,7 @@ class SettingsViewModel(
     apps: StateFlow<List<LauncherApp>>,
     resolver: PieItemResolver,
     private val importer: PieConfigImporter,
+    private val exporter: ConfigExporter,
 ) : ViewModel() {
     /** Null until the Pie Config is decoded. */
     val status: StateFlow<ConfigStatus?> =
@@ -98,14 +108,53 @@ class SettingsViewModel(
 
     fun apply() {
         val review = dialog.value as? ImportDialog.Review ?: return
-        dialog.value = ImportDialog.Applying
-        viewModelScope.launch {
-            dialog.value = if (importer.apply(review.accepted)) null else ImportDialog.ApplyFailed
-        }
+        dialog.value = null
+        track(SettingsTask.Import) { importer.apply(review.accepted) }
     }
 
     fun dismissImport() {
         dialog.value = null
+    }
+
+    private val confirmingReset = MutableStateFlow(false)
+
+    /** The Reset to Default Config confirmation (PRD 10.3); it stays open across "Export first". */
+    val resetConfirmation: StateFlow<Boolean> = confirmingReset.asStateFlow()
+
+    private val feedback = MutableStateFlow<TaskFeedback?>(null)
+
+    /** The latest task, for the task pill; null until the first one. */
+    val taskFeedback: StateFlow<TaskFeedback?> = feedback.asStateFlow()
+
+    private var runs = 0L
+
+    fun exportConfig(uri: Uri) = track(SettingsTask.ExportConfig) { exporter.exportConfig(uri) }
+
+    fun exportInventory(uri: Uri) = track(SettingsTask.ExportInventory) { exporter.exportInventory(uri) }
+
+    fun askReset() {
+        confirmingReset.value = true
+    }
+
+    fun confirmReset() {
+        if (!confirmingReset.value) return
+        confirmingReset.value = false
+        track(SettingsTask.Reset) { importer.resetToDefault() }
+    }
+
+    fun dismissReset() {
+        confirmingReset.value = false
+    }
+
+    private fun track(
+        task: SettingsTask,
+        work: suspend () -> Boolean,
+    ) {
+        val run = ++runs
+        feedback.value = TaskFeedback(run, task, TaskState.Working)
+        viewModelScope.launch {
+            feedback.value = TaskFeedback(run, task, if (work()) TaskState.Done else TaskState.Failed)
+        }
     }
 
     private fun describe(item: PieItem): String =

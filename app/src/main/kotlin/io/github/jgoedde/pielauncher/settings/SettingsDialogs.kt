@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,14 +34,14 @@ fun ImportDialogHost(
 ) {
     when (dialog) {
         null -> Unit
-        ImportDialog.Checking, ImportDialog.Applying ->
+        ImportDialog.Checking ->
             AlertDialog(
                 onDismissRequest = {},
                 confirmButton = {},
                 text = {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         LoadingIndicator()
-                        Text(stringResource(if (dialog == ImportDialog.Applying) R.string.import_applying else R.string.import_checking))
+                        Text(stringResource(R.string.import_checking))
                     }
                 },
             )
@@ -78,14 +79,36 @@ fun ImportDialogHost(
                 },
                 confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.import_close)) } },
             )
-        ImportDialog.ApplyFailed ->
-            AlertDialog(
-                onDismissRequest = onDismiss,
-                title = { Text(stringResource(R.string.import_apply_failed_title)) },
-                text = { Text(stringResource(R.string.import_apply_failed_text)) },
-                confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.import_close)) } },
-            )
     }
+}
+
+/**
+ * The reset confirmation (PRD 10.3): confirm "Reset" in `error` colour; the dismiss slot holds
+ * "Export first" and "Cancel". The dialog stays open while the export runs.
+ */
+@Composable
+fun ResetDialog(
+    onConfirm: () -> Unit,
+    onExportFirst: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.reset_title)) },
+        text = { Text(stringResource(R.string.reset_text)) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text(stringResource(R.string.reset_confirm)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onExportFirst) { Text(stringResource(R.string.reset_export_first)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.import_cancel)) }
+            }
+        },
+    )
 }
 
 /** Tapping the status row: the last import's warnings plus the current Unavailable Items. */

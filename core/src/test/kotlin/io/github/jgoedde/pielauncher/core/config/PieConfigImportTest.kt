@@ -19,7 +19,7 @@ class PieConfigImportTest {
         json: String,
         targets: DeviceTargets = device,
     ): PieConfigImport.Accepted {
-        val result = PieConfigImport.check(json, targets)
+        val result = PieConfigImport.check(json, targets, SCHEMA)
         assertTrue("expected Accepted, was $result", result is PieConfigImport.Accepted)
         return result as PieConfigImport.Accepted
     }
@@ -51,7 +51,7 @@ class PieConfigImportTest {
 
     @Test
     fun `any error rejects the file with every error`() {
-        val result = PieConfigImport.check("""{"version": 1, "baseLayer": "nope", "layers": []}""", device)
+        val result = PieConfigImport.check("""{"version": 1, "baseLayer": "nope", "layers": []}""", device, SCHEMA)
 
         assertEquals(
             PieConfigImport.Rejected(
@@ -175,5 +175,37 @@ class PieConfigImportTest {
             ),
             result.warnings,
         )
+    }
+
+    @Test
+    fun `the normalized file points at the schema of this app version, replacing the file's own`() {
+        val result =
+            accepted(
+                """
+                {"${'$'}schema": "./my-old-copy.json", "version": 1, "baseLayer": "home", "layers": [
+                  {"id": "home", "name": "Home", "items": [{"type": "app", "package": "com.android.dialer"}]}
+                ]}
+                """,
+            )
+
+        val decoded = PieConfigCodec.decode(result.normalized) as PieConfigDecoding.Decoded
+        assertEquals(SCHEMA, decoded.config.schema)
+        assertEquals(SCHEMA, result.config.schema)
+    }
+
+    @Test
+    fun `the schema URL follows the release tag, and main for untagged builds`() {
+        assertEquals(
+            "https://raw.githubusercontent.com/jgoedde/pie-launcher-remake/v1.2.3/spec/pie-config.schema.json",
+            PieConfigSchema.url("v1.2.3"),
+        )
+        assertEquals(
+            "https://raw.githubusercontent.com/jgoedde/pie-launcher-remake/main/spec/pie-config.schema.json",
+            PieConfigSchema.url(null),
+        )
+    }
+
+    private companion object {
+        const val SCHEMA = "https://raw.githubusercontent.com/jgoedde/pie-launcher-remake/v1.2.3/spec/pie-config.schema.json"
     }
 }

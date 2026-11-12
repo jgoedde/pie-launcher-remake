@@ -30,7 +30,7 @@ sealed interface PieConfigImport {
         val errors: List<ConfigError>,
     ) : PieConfigImport
 
-    /** [normalized] is what Apply writes: pretty-printed, same content. */
+    /** [normalized] is what Apply writes: pretty-printed, same content, `$schema` set to this app's schema. */
     data class Accepted(
         val config: PieConfig,
         val normalized: String,
@@ -41,14 +41,18 @@ sealed interface PieConfigImport {
     }
 
     companion object {
+        /** [schemaUrl] replaces the file's own `$schema` (see [PieConfigSchema]). */
         fun check(
             text: String,
             targets: DeviceTargets,
+            schemaUrl: String,
         ): PieConfigImport =
             when (val decoded = PieConfigCodec.decode(text)) {
                 is PieConfigDecoding.Rejected -> Rejected(decoded.errors)
-                is PieConfigDecoding.Decoded ->
-                    Accepted(decoded.config, PieConfigCodec.encode(decoded.config), ImportWarnings(targets).of(decoded.config))
+                is PieConfigDecoding.Decoded -> {
+                    val config = decoded.config.copy(schema = schemaUrl)
+                    Accepted(config, PieConfigCodec.encode(config), ImportWarnings(targets).of(config))
+                }
             }
     }
 }

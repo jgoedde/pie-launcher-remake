@@ -8,11 +8,13 @@ import android.util.Log
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.BuildConfig
 import io.github.jgoedde.pielauncher.core.config.DefaultConfig
 import io.github.jgoedde.pielauncher.core.config.LaunchableApp
 import io.github.jgoedde.pielauncher.core.config.PieConfig
 import io.github.jgoedde.pielauncher.core.config.PieConfigCodec
 import io.github.jgoedde.pielauncher.core.config.PieConfigDecoding
+import io.github.jgoedde.pielauncher.core.config.PieConfigSchema
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,6 +84,37 @@ class PieConfigStore(
             }
         }
 
+    /**
+     * Regenerates the Default Config (PRD 9.6) and makes it the active Pie Config. False when there
+     * are no launchable apps or the file cannot be written; nothing changes then.
+     */
+    suspend fun resetToDefault(): Boolean =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                val generated = generateDefault() ?: return@withLock false
+                write(PieConfigCodec.encode(generated)).also {
+                    if (it) {
+                        current.value = generated
+                        done.value = true
+                    }
+                }
+            }
+        }
+
+    /** The stored file as is, for the Pie Config export; null when there is none or it cannot be read. */
+    suspend fun storedBytes(): ByteArray? =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                if (!file.baseFile.exists()) return@withLock null
+                try {
+                    file.readFully()
+                } catch (e: IOException) {
+                    Log.e(TAG, "Cannot read the Pie Config", e)
+                    null
+                }
+            }
+        }
+
     private fun load(): PieConfig? {
         if (!file.baseFile.exists()) {
             val generated = generateDefault() ?: return null
@@ -111,7 +144,7 @@ class PieConfigStore(
         val collator = Collator.getInstance()
         val config = DefaultConfig.build(defaultApps.packages(), launchable) { a, b -> collator.compare(a, b) }
         if (config == null) Log.w(TAG, "No launchable apps yet; the Default Config is generated on a later start")
-        return config
+        return config?.copy(schema = PieConfigSchema.url(BuildConfig.VERSION_TAG))
     }
 
     /** Atomic: on failure the previous file stays. */
