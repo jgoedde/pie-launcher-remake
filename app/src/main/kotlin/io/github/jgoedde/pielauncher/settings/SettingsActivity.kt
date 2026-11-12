@@ -5,24 +5,28 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
-import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import java.io.IOException
 
@@ -85,61 +89,57 @@ class SettingsActivity : ComponentActivity() {
                 val status by viewModel.status.collectAsStateWithLifecycle()
                 val unavailable by viewModel.unavailable.collectAsStateWithLifecycle()
                 val importDialog by viewModel.importDialog.collectAsStateWithLifecycle()
-                val resetDialog by viewModel.resetDialog.collectAsStateWithLifecycle()
+                val resetConfirmation by viewModel.resetConfirmation.collectAsStateWithLifecycle()
+                val taskFeedback by viewModel.taskFeedback.collectAsStateWithLifecycle()
 
-                LaunchedEffect(Unit) {
-                    viewModel.exportOutcomes.collect { outcome ->
-                        val text =
-                            when (outcome) {
-                                ExportOutcome.ConfigExported -> R.string.export_config_done
-                                ExportOutcome.InventoryExported -> R.string.export_inventory_done
-                                ExportOutcome.Failed -> R.string.export_failed
-                            }
-                        Toast.makeText(this@SettingsActivity, text, Toast.LENGTH_SHORT).show()
+                Box(Modifier.fillMaxSize()) {
+                    if (showLicenses) {
+                        BackHandler { showLicenses = false }
+                        LicensesScreen(notice, onBack = { showLicenses = false })
+                    } else {
+                        SettingsScreen(
+                            SettingsState(isDefaultHome, status, versionInfo.versionName.orEmpty(), versionInfo.longVersionCode),
+                            object : SettingsActions {
+                                override fun requestDefaultHome() =
+                                    requestHome.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
+
+                                override fun showStatus() {
+                                    showStatus = true
+                                }
+
+                                override fun importConfig() = pickConfig.launch(JSON_TYPES)
+
+                                override fun exportConfig() = createConfig.launch(CONFIG_FILE_NAME)
+
+                                override fun exportInventory() = createInventory.launch(INVENTORY_FILE_NAME)
+
+                                override fun resetConfig() = viewModel.askReset()
+
+                                override fun openWallpaperStyle() =
+                                    start(Intent(Intent.ACTION_SET_WALLPAPER).putExtra(WALLPAPER_LAUNCH_SOURCE, LAUNCH_SOURCE_LAUNCHER))
+
+                                override fun openGitHub() = start(Intent(Intent.ACTION_VIEW, GITHUB_URL.toUri()))
+
+                                override fun openLicenses() {
+                                    showLicenses = true
+                                }
+                            },
+                        )
                     }
-                }
-
-                if (showLicenses) {
-                    BackHandler { showLicenses = false }
-                    LicensesScreen(notice, onBack = { showLicenses = false })
-                } else {
-                    SettingsScreen(
-                        SettingsState(isDefaultHome, status, versionInfo.versionName.orEmpty(), versionInfo.longVersionCode),
-                        object : SettingsActions {
-                            override fun requestDefaultHome() =
-                                requestHome.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
-
-                            override fun showStatus() {
-                                showStatus = true
-                            }
-
-                            override fun importConfig() = pickConfig.launch(JSON_TYPES)
-
-                            override fun exportConfig() = createConfig.launch(CONFIG_FILE_NAME)
-
-                            override fun exportInventory() = createInventory.launch(INVENTORY_FILE_NAME)
-
-                            override fun resetConfig() = viewModel.askReset()
-
-                            override fun openWallpaperStyle() =
-                                start(Intent(Intent.ACTION_SET_WALLPAPER).putExtra(WALLPAPER_LAUNCH_SOURCE, LAUNCH_SOURCE_LAUNCHER))
-
-                            override fun openGitHub() = start(Intent(Intent.ACTION_VIEW, GITHUB_URL.toUri()))
-
-                            override fun openLicenses() {
-                                showLicenses = true
-                            }
-                        },
+                    TaskPill(
+                        taskFeedback,
+                        Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = PILL_TOP),
                     )
                 }
                 if (showStatus) StatusDialog(status, unavailable, onDismiss = { showStatus = false })
                 ImportDialogHost(importDialog, onApply = viewModel::apply, onDismiss = viewModel::dismissImport)
-                ResetDialogHost(
-                    resetDialog,
-                    onConfirm = viewModel::confirmReset,
-                    onExportFirst = { createConfig.launch(CONFIG_FILE_NAME) },
-                    onDismiss = viewModel::dismissReset,
-                )
+                if (resetConfirmation) {
+                    ResetDialog(
+                        onConfirm = viewModel::confirmReset,
+                        onExportFirst = { createConfig.launch(CONFIG_FILE_NAME) },
+                        onDismiss = viewModel::dismissReset,
+                    )
+                }
             }
         }
     }
@@ -165,6 +165,9 @@ class SettingsActivity : ComponentActivity() {
         const val TAG = "SettingsActivity"
         const val NOTICE_ASSET = "NOTICE"
         const val GITHUB_URL = "https://github.com/jgoedde/pie-launcher-remake"
+
+        /** Just below the collapsed app bar. */
+        val PILL_TOP = 72.dp
 
         const val JSON_TYPE = "application/json"
         const val CONFIG_FILE_NAME = "pie-config.json"

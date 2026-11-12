@@ -13,7 +13,6 @@ import io.github.jgoedde.pielauncher.core.config.PieItem
 import io.github.jgoedde.pielauncher.pie.PieItemResolver
 import io.github.jgoedde.pielauncher.platform.LauncherApp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -45,8 +43,6 @@ data class UnavailableItem(
 sealed interface ImportDialog {
     data object Checking : ImportDialog
 
-    data object Applying : ImportDialog
-
     data class Review(
         val accepted: PieConfigImport.Accepted,
     ) : ImportDialog
@@ -54,21 +50,19 @@ sealed interface ImportDialog {
     data class Rejected(
         val errors: List<ConfigError>,
     ) : ImportDialog
-
-    data object ApplyFailed : ImportDialog
 }
 
-/** The Reset to Default Config confirmation (PRD 10.3). */
-sealed interface ResetDialog {
-    data object Confirm : ResetDialog
+/** A Pie Config task whose progress and outcome the task pill shows. */
+enum class SettingsTask { Import, ExportConfig, ExportInventory, Reset }
 
-    data object Resetting : ResetDialog
+enum class TaskState { Working, Done, Failed }
 
-    data object Failed : ResetDialog
-}
-
-/** What an export ended in, shown briefly. */
-enum class ExportOutcome { ConfigExported, InventoryExported, Failed }
+/** One run of [task]; [run] tells a repeated run of the same task apart. */
+data class TaskFeedback(
+    val run: Long,
+    val task: SettingsTask,
+    val state: TaskState,
+)
 
 class SettingsViewModel(
     config: StateFlow<PieConfig?>,
@@ -114,49 +108,53 @@ class SettingsViewModel(
 
     fun apply() {
         val review = dialog.value as? ImportDialog.Review ?: return
-        dialog.value = ImportDialog.Applying
-        viewModelScope.launch {
-            dialog.value = if (importer.apply(review.accepted)) null else ImportDialog.ApplyFailed
-        }
+        dialog.value = null
+        track(SettingsTask.Import) { importer.apply(review.accepted) }
     }
 
     fun dismissImport() {
         dialog.value = null
     }
 
-    private val reset = MutableStateFlow<ResetDialog?>(null)
-    val resetDialog: StateFlow<ResetDialog?> = reset.asStateFlow()
+    private val confirmingReset = MutableStateFlow(false)
 
-    private val exports = Channel<ExportOutcome>(Channel.BUFFERED)
-    val exportOutcomes: Flow<ExportOutcome> = exports.receiveAsFlow()
+    /** The Reset to Default Config confirmation (PRD 10.3); it stays open across "Export first". */
+    val resetConfirmation: StateFlow<Boolean> = confirmingReset.asStateFlow()
 
-    fun exportConfig(uri: Uri) {
-        viewModelScope.launch {
-            exports.send(if (exporter.exportConfig(uri)) ExportOutcome.ConfigExported else ExportOutcome.Failed)
-        }
-    }
+    private val feedback = MutableStateFlow<TaskFeedback?>(null)
 
-    fun exportInventory(uri: Uri) {
-        viewModelScope.launch {
-            exports.send(if (exporter.exportInventory(uri)) ExportOutcome.InventoryExported else ExportOutcome.Failed)
-        }
-    }
+    /** The latest task, for the task pill; null until the first one. */
+    val taskFeedback: StateFlow<TaskFeedback?> = feedback.asStateFlow()
 
-    /** Opens the confirmation; it stays open across "Export first". */
+    private var runs = 0L
+
+    fun exportConfig(uri: Uri) = track(SettingsTask.ExportConfig) { exporter.exportConfig(uri) }
+
+    fun exportInventory(uri: Uri) = track(SettingsTask.ExportInventory) { exporter.exportInventory(uri) }
+
     fun askReset() {
-        reset.value = ResetDialog.Confirm
+        confirmingReset.value = true
     }
 
     fun confirmReset() {
-        if (reset.value != ResetDialog.Confirm) return
-        reset.value = ResetDialog.Resetting
-        viewModelScope.launch {
-            reset.value = if (importer.resetToDefault()) null else ResetDialog.Failed
-        }
+        if (!confirmingReset.value) return
+        confirmingReset.value = false
+        track(SettingsTask.Reset) { importer.resetToDefault() }
     }
 
     fun dismissReset() {
-        reset.value = null
+        confirmingReset.value = false
+    }
+
+    private fun track(
+        task: SettingsTask,
+        work: suspend () -> Boolean,
+    ) {
+        val run = ++runs
+        feedback.value = TaskFeedback(run, task, TaskState.Working)
+        viewModelScope.launch {
+            feedback.value = TaskFeedback(run, task, if (work()) TaskState.Done else TaskState.Failed)
+        }
     }
 
     private fun describe(item: PieItem): String =
