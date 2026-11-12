@@ -284,8 +284,10 @@ private fun AppIcon(
     iconLoader: IconLoader,
 ) {
     val iconPx = with(LocalDensity.current) { IconSize.roundToPx() }
-    val icon: LauncherIcon? by produceState(iconLoader.cached(item.app, iconPx), item.app, iconPx) {
-        if (value == null) value = iconLoader.appIcon(item.app, iconPx)
+    val themed by iconLoader.themedIcons.collectAsState()
+    // Always reload on a new app: the previous app's icon must never stay in place.
+    val icon: LauncherIcon? by produceState(iconLoader.cached(item.app, iconPx), item.app, iconPx, themed) {
+        value = iconLoader.cached(item.app, iconPx) ?: iconLoader.appIcon(item.app, iconPx)
     }
     LauncherIconImage(icon, IconSize)
 }
