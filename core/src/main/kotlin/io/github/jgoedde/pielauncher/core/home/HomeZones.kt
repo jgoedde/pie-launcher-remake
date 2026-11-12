@@ -56,6 +56,7 @@ data class HomeZones(
                 else -> WidgetZoneId.HomeLower
             }
         val grid = grid(zone)
+
         fun nearest(
             offset: Float,
             pitch: Float,

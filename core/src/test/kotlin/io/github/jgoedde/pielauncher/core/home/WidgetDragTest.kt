@@ -102,7 +102,12 @@ class WidgetDragTest {
     fun `a widget not yet on the Page (from the Widget Picker) drags through the same path`() {
         val new = DraggedWidget(7, CellSpan(2, 1), bounds(default = CellSpan(2, 1)))
 
-        val dropped = WidgetDrag.start(layout, new, nowMs = 0).moveTo(DragTarget.Cell(HomeUpper, 0, 1), nowMs = 0).drop().changed()
+        val dropped =
+            WidgetDrag
+                .start(layout, new, nowMs = 0)
+                .moveTo(DragTarget.Cell(HomeUpper, 0, 1), nowMs = 0)
+                .drop()
+                .changed()
 
         assertEquals(LaidOutWidget(7, HomeUpper, CellRect(0, 1, 2, 1), new.bounds), dropped.widget)
     }

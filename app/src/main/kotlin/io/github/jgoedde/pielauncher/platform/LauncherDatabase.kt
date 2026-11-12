@@ -128,6 +128,9 @@ interface WidgetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(row: WidgetRow)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(rows: List<WidgetRow>)
+
     @Query("DELETE FROM widget WHERE app_widget_id IN (:ids)")
     suspend fun delete(ids: Collection<Int>)
 }

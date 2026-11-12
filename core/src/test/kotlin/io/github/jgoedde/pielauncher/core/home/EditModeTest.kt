@@ -41,7 +41,13 @@ class EditModeTest {
                 .dragTo(DragTarget.Cell(HomeUpper, 2, 0), nowMs = 0)
                 .tick(nowMs = WidgetDrag.REORDER_TIMEOUT_MS)
 
-        assertEquals(CellRect(0, 0, 2, 1), (mode as EditMode.Dragging).drag.preview.widget(2)!!.cells)
+        assertEquals(
+            CellRect(0, 0, 2, 1),
+            (mode as EditMode.Dragging)
+                .drag.preview
+                .widget(2)!!
+                .cells,
+        )
     }
 
     @Test

@@ -75,13 +75,7 @@ private class TouchPopupPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
-        val bounds =
-            PopupBounds(
-                left = insets.left,
-                top = insets.top,
-                right = windowSize.width - insets.right,
-                bottom = windowSize.height - insets.bottom,
-            )
+        val bounds = insets.boundsIn(windowSize)
         val card =
             TouchPopup.place(
                 touchX = anchorBounds.left,
@@ -94,15 +88,40 @@ private class TouchPopupPositionProvider(
     }
 }
 
-/** One row of the empty-space popup: a Material icon and its label. */
-private enum class EmptySpaceItem(
+/**
+ * Places a widget's popup by [TouchPopup.placeAbout] around the anchor (the widget's bounds):
+ * above it, or below it when there is no room above.
+ */
+private class WidgetPopupPositionProvider(
+    private val insets: PopupInsets,
+    private val shadowMargin: Int,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val card =
+            TouchPopup.placeAbout(
+                anchor = PopupBounds(anchorBounds.left, anchorBounds.top, anchorBounds.right, anchorBounds.bottom),
+                width = popupContentSize.width - 2 * shadowMargin,
+                height = popupContentSize.height - 2 * shadowMargin,
+                bounds = insets.boundsIn(windowSize),
+            )
+        return IntOffset(card.x - shadowMargin, card.y - shadowMargin)
+    }
+}
+
+private fun PopupInsets.boundsIn(windowSize: IntSize) =
+    PopupBounds(left = left, top = top, right = windowSize.width - right, bottom = windowSize.height - bottom)
+
+/** One row of a launcher popup: a Material icon, its label and what it does. */
+internal class PopupItem(
     @param:StringRes val label: Int,
     @param:DrawableRes val icon: Int,
-) {
-    WallpaperStyle(R.string.home_menu_wallpaper_style, R.drawable.palette),
-    Widgets(R.string.home_menu_widgets, R.drawable.widgets),
-    HomeSettings(R.string.home_menu_home_settings, R.drawable.settings),
-}
+    val onClick: () -> Unit,
+)
 
 /**
  * The empty-space popup (#34 stories 1–5), Launcher3's `WorkspaceLongPressOptions` at the touch
@@ -118,6 +137,45 @@ internal fun EmptySpacePopup(
     onWidgets: () -> Unit,
     onHomeSettings: () -> Unit,
 ) {
+    val items =
+        listOf(
+            PopupItem(R.string.home_menu_wallpaper_style, R.drawable.palette, onWallpaperStyle),
+            PopupItem(R.string.home_menu_widgets, R.drawable.widgets, onWidgets),
+            PopupItem(R.string.home_menu_home_settings, R.drawable.settings, onHomeSettings),
+        )
+    // A zero-size anchor at the press: its top-left corner is the touch point.
+    Box(Modifier.offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }) {
+        LauncherPopup(items, onDismiss) { insets, shadowMargin -> TouchPopupPositionProvider(insets, shadowMargin) }
+    }
+}
+
+/**
+ * The popup of a long-pressed widget (PRD 7.2, Launcher3 `AppWidgetSystemShortcuts`), above or
+ * below the widget it is placed in (its parent's bounds): "Remove", plus "Widget settings" when
+ * the widget is reconfigurable.
+ */
+@Composable
+internal fun WidgetPopup(
+    reconfigurable: Boolean,
+    onDismiss: () -> Unit,
+    onRemove: () -> Unit,
+    onWidgetSettings: () -> Unit,
+) {
+    val items =
+        listOfNotNull(
+            PopupItem(R.string.widget_remove, R.drawable.close, onRemove),
+            PopupItem(R.string.widget_settings, R.drawable.settings, onWidgetSettings).takeIf { reconfigurable },
+        )
+    LauncherPopup(items, onDismiss) { insets, shadowMargin -> WidgetPopupPositionProvider(insets, shadowMargin) }
+}
+
+/** A Launcher3-style popup card of [items], kept off the system bars and screen edges. */
+@Composable
+private fun LauncherPopup(
+    items: List<PopupItem>,
+    onDismiss: () -> Unit,
+    positionProvider: (PopupInsets, Int) -> PopupPositionProvider,
+) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val safe = WindowInsets.safeDrawing
@@ -130,45 +188,36 @@ internal fun EmptySpacePopup(
             right = safe.getRight(density, layoutDirection) + margin,
             bottom = safe.getBottom(density) + margin,
         )
-    val positionProvider = remember(insets, shadowMargin) { TouchPopupPositionProvider(insets, shadowMargin) }
+    val provider = remember(insets, shadowMargin) { positionProvider(insets, shadowMargin) }
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
-    val actions =
-        mapOf(
-            EmptySpaceItem.WallpaperStyle to onWallpaperStyle,
-            EmptySpaceItem.Widgets to onWidgets,
-            EmptySpaceItem.HomeSettings to onHomeSettings,
-        )
-    // A zero-size anchor at the press: its top-left corner is the touch point.
-    Box(Modifier.offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }) {
-        Popup(
-            popupPositionProvider = positionProvider,
-            onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true),
-        ) {
-            AnimatedVisibility(visibleState = visible, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = MenuDefaults.TonalElevation,
-                    shadowElevation = MenuDefaults.ShadowElevation,
-                    modifier = Modifier.padding(PopupShadowMargin),
+    Popup(
+        popupPositionProvider = provider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        AnimatedVisibility(visibleState = visible, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = MenuDefaults.TonalElevation,
+                shadowElevation = MenuDefaults.ShadowElevation,
+                modifier = Modifier.padding(PopupShadowMargin),
+            ) {
+                Column(
+                    Modifier
+                        .padding(vertical = PopupVerticalPadding)
+                        .widthIn(min = PopupMinWidth, max = PopupMaxWidth)
+                        .width(IntrinsicSize.Max),
                 ) {
-                    Column(
-                        Modifier
-                            .padding(vertical = PopupVerticalPadding)
-                            .widthIn(min = PopupMinWidth, max = PopupMaxWidth)
-                            .width(IntrinsicSize.Max),
-                    ) {
-                        EmptySpaceItem.entries.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(item.label)) },
-                                leadingIcon = { Icon(painterResource(item.icon), contentDescription = null) },
-                                onClick = {
-                                    onDismiss()
-                                    actions.getValue(item)()
-                                },
-                            )
-                        }
+                    items.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(item.label)) },
+                            leadingIcon = { Icon(painterResource(item.icon), contentDescription = null) },
+                            onClick = {
+                                onDismiss()
+                                item.onClick()
+                            },
+                        )
                     }
                 }
             }

@@ -216,6 +216,37 @@ class WidgetHost(
         host.deleteAppWidgetId(id)
     }
 
+    /**
+     * Records the Home Page's widgets where [layout] has them (a committed move with its reflow).
+     * Runs in the app scope, so leaving Home right after a drop still saves it.
+     */
+    fun save(layout: WidgetLayout) {
+        appScope.launch {
+            placing.withLock {
+                val rows = dao.all().associateBy { it.appWidgetId }
+                val changed =
+                    layout.widgets.mapNotNull { widget ->
+                        rows[widget.id]?.takeIf { it.zone != widget.zone || it.cells != widget.cells }?.copy(
+                            zone = widget.zone,
+                            cells = widget.cells,
+                        )
+                    }
+                if (changed.isNotEmpty()) dao.insertAll(changed)
+            }
+        }
+    }
+
+    /** Deletes the removed widget [id] for good once its undo window is over (PRD 7.5): row and id. */
+    fun discard(id: Int) {
+        appScope.launch { remove(id) }
+    }
+
+    /** Whether widget [id] offers "Widget settings": it has a configure activity and declares itself reconfigurable. */
+    fun isReconfigurable(id: Int): Boolean {
+        val info = info(id) ?: return false
+        return info.configure != null && info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0
+    }
+
     /** Startup reconcile (PRD 7.1): deletes host ids with no row and rows with no host id. */
     suspend fun reconcile() {
         val result = WidgetReconcile.of(host.appWidgetIds.toSet(), dao.all().map { it.appWidgetId }.toSet())

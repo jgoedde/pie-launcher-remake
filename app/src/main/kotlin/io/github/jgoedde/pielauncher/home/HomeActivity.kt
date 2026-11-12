@@ -1,5 +1,6 @@
 package io.github.jgoedde.pielauncher.home
 
+import android.app.ActivityOptions
 import android.app.WallpaperColors
 import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
@@ -9,9 +10,11 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,6 +31,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -40,12 +44,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.home.EditMode
+import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
@@ -74,6 +82,7 @@ import io.github.jgoedde.pielauncher.widgets.PendingWidgetPreview
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerContract
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerRequest
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -167,6 +176,9 @@ class HomeActivity : ComponentActivity() {
                                 addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, WidgetZoneId.addOrder(picked.zone)))
                             }
                         }
+                    val editor = remember { WidgetEditor(HomeWidgetEditActions(scope, snackbars)) }
+                    WidgetRemovalSnackbar(editor, snackbars)
+                    BackHandler(enabled = editor.mode != EditMode.Idle, onBack = editor::leave)
                     val rows by graph.widgetHost.widgets.collectAsStateWithLifecycle()
                     val pending by graph.widgetHost.pending.collectAsStateWithLifecycle()
                     // The widget being configured shows as its preview in its target cells (PRD 7.4).
@@ -179,6 +191,7 @@ class HomeActivity : ComponentActivity() {
                     LaunchedEffect(drawer) {
                         homePresses.collect {
                             emptySpaceMenu = null
+                            editor.leave()
                             drawer.close()
                         }
                     }
@@ -197,7 +210,9 @@ class HomeActivity : ComponentActivity() {
                         Modifier
                             .fillMaxSize()
                             .onSizeChanged { drawer.travelPx = it.height.toFloat() }
-                            .excludesBackGestureAtEdges(enabled = !drawer.isShown && emptySpaceMenu == null),
+                            .excludesBackGestureAtEdges(
+                                enabled = !drawer.isShown && emptySpaceMenu == null && editor.mode == EditMode.Idle,
+                            ),
                     ) {
                         HomePage(
                             drawer,
@@ -222,12 +237,24 @@ class HomeActivity : ComponentActivity() {
                                         span = widget.cells.span,
                                         grid = graph.homeGeometry.catalogGrid(this@HomeActivity),
                                         onLightBackground = wallpaperWantsDarkIcons.value,
+                                        touches = remember(widget.id) { editor.touchesOf(widget.id) },
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
                             },
                             onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
                             onZonesLaidOut = graph.homeGeometry::report,
+                            editor = editor,
+                            widgetOverlay = { widget ->
+                                if ((editor.mode as? EditMode.Selected)?.widgetId == widget.id) {
+                                    WidgetPopup(
+                                        reconfigurable = remember(widget.id) { editor.isReconfigurable(widget.id) },
+                                        onDismiss = editor::leave,
+                                        onRemove = { editor.remove(widget.id) },
+                                        onWidgetSettings = { editor.openSettings(widget.id) },
+                                    )
+                                }
+                            },
                             zoneOverlay = { zone ->
                                 emptySpaceMenu?.takeIf { it.zone == zone }?.let { menu ->
                                     EmptySpacePopup(
@@ -247,6 +274,8 @@ class HomeActivity : ComponentActivity() {
                             actions = drawerActions,
                         )
                         PieOverlay(pie, graph.iconLoader)
+                        DropTargetBar(editor, Modifier.align(Alignment.TopCenter))
+                        DragPicture(editor)
                         SnackbarHost(
                             snackbars,
                             Modifier
@@ -323,6 +352,39 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    /** Edit Mode's effects outside the Home Page: the stored layout, the widget ids, messages. */
+    private inner class HomeWidgetEditActions(
+        private val scope: CoroutineScope,
+        private val snackbars: SnackbarHostState,
+    ) : WidgetEditActions {
+        override fun save(layout: WidgetLayout) = graph.widgetHost.save(layout)
+
+        override fun discard(id: Int) = graph.widgetHost.discard(id)
+
+        override fun isReconfigurable(id: Int): Boolean = graph.widgetHost.isReconfigurable(id)
+
+        /** Reopens the configure screen (PRD 7.2); its result does not matter: a cancel keeps the widget as it was. */
+        override fun reconfigure(id: Int) {
+            // The configure IntentSender carries no background-start rights of its own; the visible launcher grants them.
+            val options =
+                ActivityOptions
+                    .makeBasic()
+                    .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
+                    .toBundle()
+            try {
+                graph.widgetHost.startConfigure(this@HomeActivity, id, REQUEST_RECONFIGURE, options)
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "Configure activity missing for widget $id", e)
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Configure activity not allowed for widget $id", e)
+            }
+        }
+
+        override fun rejected(reason: Rejection) {
+            scope.launch { snackbars.showSnackbar(getString(R.string.widget_no_space)) }
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         graph.widgetHost.startListening()
@@ -354,5 +416,30 @@ class HomeActivity : ComponentActivity() {
 }
 
 private const val TAG = "HomeActivity"
+
+/** Below the `ActivityResultRegistry` range, so the registry never claims this result. */
+private const val REQUEST_RECONFIGURE = 1
+
+/**
+ * The "Item removed" snackbar with "Undo" (PRD 7.5) for the removal waiting for its undo window;
+ * the widget is deleted for good when the window runs out. A new removal or an Undo replaces it.
+ */
+@Composable
+private fun WidgetRemovalSnackbar(
+    editor: WidgetEditor,
+    snackbars: SnackbarHostState,
+) {
+    val message = stringResource(R.string.widget_removed)
+    val undo = stringResource(R.string.widget_undo)
+    LaunchedEffect(editor.removal) {
+        val due = editor.removal.dueAtMs ?: return@LaunchedEffect
+        launch {
+            val result = snackbars.showSnackbar(message, actionLabel = undo, duration = SnackbarDuration.Indefinite)
+            if (result == SnackbarResult.ActionPerformed) editor.undoRemoval()
+        }
+        delay((due - SystemClock.uptimeMillis()).coerceAtLeast(0))
+        editor.expireRemoval()
+    }
+}
 
 private fun WallpaperColors?.wantsDarkIcons(): Boolean = this != null && colorHints and WallpaperColors.HINT_SUPPORTS_DARK_TEXT != 0

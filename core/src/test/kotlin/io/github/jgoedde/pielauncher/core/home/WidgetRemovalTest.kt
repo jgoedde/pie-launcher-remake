@@ -55,7 +55,11 @@ class WidgetRemovalTest {
 
     @Test
     fun `starting another edit commits the pending removal`() {
-        val committed = WidgetRemoval.None.remove(clock, nowMs = 0).removal.commit()
+        val committed =
+            WidgetRemoval.None
+                .remove(clock, nowMs = 0)
+                .removal
+                .commit()
 
         assertEquals(listOf(clock), committed.delete)
         assertNull(committed.removal.undo().restored)
