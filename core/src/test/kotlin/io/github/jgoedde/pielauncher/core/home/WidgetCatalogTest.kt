@@ -165,6 +165,16 @@ class WidgetCatalogTest {
         assertEquals(listOf(ReportedSize(width = 90f, height = 100f)), WidgetCatalog.sizeList(CellSpan(1, 1), tall))
     }
 
+    @Test
+    fun `a widget's span bounds are its spans and resize axes`() {
+        val spans = WidgetCatalog.spans(resizable(minWidth = 176f, minHeight = 80f, minResizeWidth = 80f, minResizeHeight = 80f), grid)
+
+        assertEquals(
+            SpanBounds(CellSpan(2, 1), CellSpan(1, 1), CellSpan(4, 5), resizesHorizontally = true, resizesVertically = true),
+            spans.bounds,
+        )
+    }
+
     private fun resizable(
         minWidth: Float,
         minHeight: Float,

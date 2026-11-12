@@ -13,21 +13,7 @@ data class WidgetDrop(
     val cells: CellRect,
     val moved: Map<Int, CellRect> = emptyMap(),
 ) {
-    /** This drop as ints, for an Intent extra: Page, zone, cells, then id and cells per moved neighbour. */
-    fun toInts(): IntArray =
-        (listOf(page, zone.ordinal) + cells.ints() + moved.flatMap { (id, cells) -> listOf(id) + cells.ints() }).toIntArray()
-
     companion object {
-        private const val HEAD = 6
-
-        /** The drop [toInts] wrote; null when [ints] are not one. */
-        fun fromInts(ints: IntArray): WidgetDrop? {
-            if (ints.size < HEAD || (ints.size - HEAD) % 5 != 0 || ints[0] < HOME_PAGE) return null
-            val zone = WidgetZoneId.entries.getOrNull(ints[1]) ?: return null
-            val moved = (HEAD until ints.size step 5).associate { at -> ints[at] to ints.rect(at + 1) }
-            return WidgetDrop(ints[0], zone, ints.rect(2), moved)
-        }
-
         /** The drop a [WidgetDrag.drop] of a new widget on [page] committed. */
         fun of(
             page: Int,
@@ -35,7 +21,3 @@ data class WidgetDrop(
         ): WidgetDrop = WidgetDrop(page, result.widget.zone, result.widget.cells, result.moved.associate { it.id to it.cells })
     }
 }
-
-private fun CellRect.ints() = listOf(column, row, width, height)
-
-private fun IntArray.rect(at: Int) = CellRect(this[at], this[at + 1], this[at + 2], this[at + 3])

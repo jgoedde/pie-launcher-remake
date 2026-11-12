@@ -36,4 +36,16 @@ class PinHandOffTest {
 
         assertNull(handOff.take(token))
     }
+
+    @Test
+    fun `a held Pin Request can be looked at until it is released`() {
+        val handOff = PinHandOff<String>()
+        val token = handOff.hold("request")
+
+        assertEquals("request", handOff.get(token))
+        assertEquals("request", handOff.get(token))
+        handOff.release(token)
+
+        assertNull(handOff.get(token))
+    }
 }

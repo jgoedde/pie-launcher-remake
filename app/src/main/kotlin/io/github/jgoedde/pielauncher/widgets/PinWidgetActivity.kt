@@ -45,7 +45,6 @@ import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.PinAdd
 import io.github.jgoedde.pielauncher.core.home.PinSheet
 import io.github.jgoedde.pielauncher.core.home.Rejection
-import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
@@ -186,9 +185,8 @@ class PinWidgetActivity : ComponentActivity() {
     ) {
         val pin = request ?: return
         val spans = sheet?.spans ?: return
-        val bounds = SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
         val token = WidgetDragHandOff.pins.hold(pin)
-        if (!WidgetDragHandOff.start(view, WidgetDragPayload.Pin(token), bounds, shadow)) return WidgetDragHandOff.pins.release(token)
+        if (!WidgetDragHandOff.start(view, WidgetDragPayload.Pin(token), spans.bounds, shadow)) return WidgetDragHandOff.pins.release(token)
         // The sheet sits over the requesting app: Home must come up to take the drop (Launcher3 does the same).
         startActivity(
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

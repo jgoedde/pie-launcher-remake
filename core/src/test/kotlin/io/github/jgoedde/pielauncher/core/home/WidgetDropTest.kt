@@ -64,24 +64,4 @@ class WidgetDropTest {
                 .widget.cells,
         )
     }
-
-    @Test
-    fun `a drop survives the trip to the add trampoline as ints, with its Page`() {
-        val drop = WidgetDrop(3, WidgetZoneId.Page, CellRect(1, 0, 2, 1), mapOf(3 to CellRect(3, 0, 1, 1), 4 to CellRect(0, 0, 1, 1)))
-
-        assertEquals(drop, WidgetDrop.fromInts(drop.toInts()))
-    }
-
-    @Test
-    fun `span bounds survive the trip from the picker to Home as ints`() {
-        val bounds = bounds(default = CellSpan(3, 2), min = CellSpan(2, 1), max = CellSpan(4, 2), horizontal = true, vertical = false)
-
-        assertEquals(bounds, SpanBounds.fromInts(bounds.toInts()))
-    }
-
-    @Test
-    fun `malformed ints decode to nothing`() {
-        assertEquals(null, WidgetDrop.fromInts(intArrayOf(0, 9, 0, 0, 1, 1)))
-        assertEquals(null, SpanBounds.fromInts(intArrayOf(1, 1)))
-    }
 }
