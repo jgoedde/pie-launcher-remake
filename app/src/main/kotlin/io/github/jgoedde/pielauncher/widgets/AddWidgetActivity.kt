@@ -18,7 +18,6 @@ import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.core.home.CellSpan
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.Rejection
-import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import kotlinx.coroutines.launch
@@ -149,16 +148,8 @@ class AddWidgetActivity : ComponentActivity() {
         val spot = spotFor(info)
         if (spot !is LayoutResult.Changed) return finishWith(spot.outcome())
         widgetId = widgets.allocateId()
-        val options = sizeOptions(WidgetCatalog.sizeList(spot.widget.cells.span, graph.homeGeometry.catalogGrid(this)))
-        if (widgets.bindIfAllowed(widgetId, info.profile, info.provider, options)) return onBound()
-        startActivityForResult(
-            Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options),
-            REQUEST_BIND,
-        )
+        val ask = widgets.bindOrAsk(widgetId, info, widgets.sizeOptionsFor(spot.widget.cells.span, this)) ?: return onBound()
+        startActivityForResult(ask, REQUEST_BIND)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -236,7 +227,7 @@ class AddWidgetActivity : ComponentActivity() {
         request: LauncherApps.PinItemRequest,
         span: CellSpan,
     ): Boolean {
-        val options = sizeOptions(WidgetCatalog.sizeList(span, graph.homeGeometry.catalogGrid(this)))
+        val options = widgets.sizeOptionsFor(span, this)
         options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
         return try {
             request.isValid && request.accept(options)

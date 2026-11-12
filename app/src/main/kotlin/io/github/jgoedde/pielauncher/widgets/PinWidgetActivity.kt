@@ -135,23 +135,11 @@ class PinWidgetActivity : ComponentActivity() {
 
     private fun add() {
         val info = request?.getAppWidgetProviderInfo(this) ?: return cancel()
-        val options = bindOptions() ?: return
+        // The widget's size at the spot the sheet found, so it lays out right from its first update.
+        val ready = sheet?.add as? PinAdd.Ready ?: return
         pendingId = widgets.allocateId()
-        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider, options)) return accept()
-        bind.launch(
-            Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingId)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options),
-        )
-    }
-
-    /** The widget's size at the spot the sheet found, so it lays out right from its first update; null when Add is disabled. */
-    private fun bindOptions(): Bundle? {
-        val content = sheet ?: return null
-        val ready = content.add as? PinAdd.Ready ?: return null
-        return sizeOptions(WidgetCatalog.sizeList(ready.span, content.grid))
+        val ask = widgets.bindOrAsk(pendingId, info, widgets.sizeOptionsFor(ready.span, this)) ?: return accept()
+        bind.launch(ask)
     }
 
     /**
@@ -168,8 +156,7 @@ class PinWidgetActivity : ComponentActivity() {
                 Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
                 return@launch cancel()
             }
-            val options =
-                sizeOptions(WidgetCatalog.sizeList(placed.widget.cells.span, graph.homeGeometry.catalogGrid(this@PinWidgetActivity)))
+            val options = widgets.sizeOptionsFor(placed.widget.cells.span, this@PinWidgetActivity)
             options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
             val accepted =
                 try {

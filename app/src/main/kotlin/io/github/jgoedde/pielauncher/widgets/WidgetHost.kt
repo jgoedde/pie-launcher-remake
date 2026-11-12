@@ -7,6 +7,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.Process
 import android.os.UserHandle
@@ -55,6 +56,7 @@ class WidgetHost(
     private val application: Application,
     database: LauncherDatabase,
     private val appScope: CoroutineScope,
+    private val homeGeometry: HomeGeometry,
 ) {
     private val dao = database.widgets()
     private val manager: AppWidgetManager = AppWidgetManager.getInstance(application)
@@ -103,12 +105,32 @@ class WidgetHost(
 
     fun info(id: Int): AppWidgetProviderInfo? = manager.getAppWidgetInfo(id)
 
-    fun bindIfAllowed(
+    /**
+     * Binds [id] to [info] with [options] when the launcher may bind widgets, and returns null.
+     * Otherwise returns the system `ACTION_APPWIDGET_BIND` dialog that asks the user, to start for
+     * a result.
+     */
+    fun bindOrAsk(
         id: Int,
-        profile: UserHandle,
-        provider: ComponentName,
-        options: Bundle? = null,
-    ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, options)
+        info: AppWidgetProviderInfo,
+        options: Bundle,
+    ): Intent? {
+        if (manager.bindAppWidgetIdIfAllowed(id, info.profile, info.provider, options)) return null
+        return Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options)
+    }
+
+    /**
+     * The size options of a widget showing at [span] on the Home Page's grid: its bind options,
+     * and what a Pin Request is accepted with.
+     */
+    fun sizeOptionsFor(
+        span: CellSpan,
+        context: Context,
+    ): Bundle = sizeOptions(WidgetCatalog.sizeList(span, homeGeometry.catalogGrid(context)))
 
     /** Every widget provider of the main profile the Widget Picker may list (not hidden from pickers). */
     fun pickerProviders(): List<AppWidgetProviderInfo> =
