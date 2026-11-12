@@ -40,7 +40,11 @@ sealed interface WidgetAddOutcome {
     data object Cancelled : WidgetAddOutcome
 }
 
-/** Turns widget adds into strings for Intent and ClipDescription extras, and back; null for anything else. */
+/**
+ * Turns widget adds (targets and outcomes) and the span bounds a widget drag carries into strings
+ * for Intent and ClipDescription extras, and back; decoding anything else gives null. Widget
+ * Zones go by name, as in Room.
+ */
 object WidgetAddCodec {
     private const val TAP = "tap"
     private const val DROP = "drop"

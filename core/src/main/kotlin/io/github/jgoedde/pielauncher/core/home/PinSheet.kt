@@ -37,10 +37,6 @@ class PinHandOff<R : Any> {
     @Synchronized
     fun hold(request: R): Long = (++next).also { held[it] = request }
 
-    /** The request [token] stands for, kept until [take] or [release]; null when it was taken or released. */
-    @Synchronized
-    fun get(token: Long): R? = held[token]
-
     /** The request [token] stands for, handed over once; null when it was taken or released. */
     @Synchronized
     fun take(token: Long): R? = held.remove(token)

@@ -92,19 +92,20 @@ class AddWidgetActivity : ComponentActivity() {
 
     /**
      * The widget Pin Request this add answers (dragged in from the pin sheet); null for the Widget
-     * Picker. It stays in [WidgetDragHandOff.pins] until this trampoline finishes, so a recreated
-     * trampoline still finds it.
+     * Picker. Taken from [WidgetDragHandOff.pins] once, then kept in the saved state, so it
+     * survives a recreate and process death while a system screen is up.
      */
-    private val pin: LauncherApps.PinItemRequest?
-        get() = (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.get(it.handle) }
+    private var pin: LauncherApps.PinItemRequest? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
             // Recreated while a system screen is up: its result is still on the way.
             widgetId = savedInstanceState.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            pin = savedInstanceState.getParcelable(STATE_PIN, LauncherApps.PinItemRequest::class.java)
             return
         }
+        pin = (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.take(it.handle) }
         val provider = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROVIDER, ComponentName::class.java)
         val profile = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROFILE, UserHandle::class.java)
         val info =
@@ -129,6 +130,7 @@ class AddWidgetActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_ID, widgetId)
+        outState.putParcelable(STATE_PIN, pin)
     }
 
     @Deprecated("Deprecated in Java")
@@ -223,10 +225,7 @@ class AddWidgetActivity : ComponentActivity() {
 
     /** Home clears the launcher task, destroying this activity without a result: that is a cancel too. */
     override fun onDestroy() {
-        if (isFinishing) {
-            discard()
-            (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.release(it.handle) }
-        }
+        if (isFinishing) discard()
         super.onDestroy()
     }
 
@@ -255,6 +254,7 @@ class AddWidgetActivity : ComponentActivity() {
     private companion object {
         const val TAG = "AddWidgetActivity"
         const val STATE_ID = "widget_id"
+        const val STATE_PIN = "pin"
         const val REQUEST_BIND = 2
         const val REQUEST_CONFIGURE = 3
     }

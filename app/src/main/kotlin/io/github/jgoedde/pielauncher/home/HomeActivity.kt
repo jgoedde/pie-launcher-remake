@@ -217,7 +217,7 @@ class HomeActivity : ComponentActivity() {
                                 when (payload) {
                                     is WidgetDragPayload.Provider ->
                                         addWidget.launch(AddWidgetRequest(WidgetAddTarget.Drop(drop), payload.provider, payload.profile))
-                                    // The trampoline finds the Pin Request in WidgetDragHandOff.pins and releases it when done.
+                                    // The trampoline takes the Pin Request from WidgetDragHandOff.pins.
                                     is WidgetDragPayload.Pin -> addWidget.launch(AddWidgetRequest(WidgetAddTarget.Pin(payload.token, drop)))
                                 }
                             }
