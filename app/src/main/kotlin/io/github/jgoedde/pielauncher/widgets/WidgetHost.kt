@@ -13,40 +13,27 @@ import android.util.Log
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import io.github.jgoedde.pielauncher.core.home.CellGrid
-import io.github.jgoedde.pielauncher.core.home.CellRect
 import io.github.jgoedde.pielauncher.core.home.CellSpan
-import io.github.jgoedde.pielauncher.core.home.Placed
+import io.github.jgoedde.pielauncher.core.home.HOME_PAGE
+import io.github.jgoedde.pielauncher.core.home.HomeZones
+import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
+import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetConfigure
-import io.github.jgoedde.pielauncher.core.home.WidgetPlacement
+import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
 import io.github.jgoedde.pielauncher.core.home.WidgetSize
-import io.github.jgoedde.pielauncher.core.home.ZoneSlots
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.WidgetRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-
-/** A placed widget as the home screen draws it. */
-data class HomeWidget(
-    val appWidgetId: Int,
-    val page: Int,
-    val zone: WidgetZoneId,
-    val cells: CellRect,
-)
-
-/** A Widget Zone a new widget may go into, in the order they are tried. */
-data class ZoneTarget(
-    val page: Int,
-    val zone: WidgetZoneId,
-    val grid: CellGrid,
-)
 
 /**
  * The one process-wide `AppWidgetHost` (PRD 7.1) and the widget layout in Room (ADR 0002).
@@ -67,11 +54,8 @@ class WidgetHost(
     /** Serialises placements, so two adds can never claim the same free cells. */
     private val placing = Mutex()
 
-    val widgets: StateFlow<List<HomeWidget>> =
-        dao
-            .observeAll()
-            .map { rows -> rows.mapNotNull { it.toHomeWidget() } }
-            .stateIn(appScope, SharingStarted.Eagerly, emptyList())
+    /** Every placed widget's row, as stored. */
+    val widgets: StateFlow<List<WidgetRow>> = dao.observeAll().stateIn(appScope, SharingStarted.Eagerly, emptyList())
 
     /** Updates flow only while listening; the system queues them meanwhile. Called from the Home Activity's onStart. */
     fun startListening() {
@@ -116,37 +100,42 @@ class WidgetHost(
         options: Bundle?,
     ) = host.startAppWidgetConfigureActivityForResult(activity, id, 0, requestCode, options)
 
-    /** Where a widget of [info] would go: the first of [targets] with room, else null ("No space"). */
+    /** The Home Page's Widget Layout: [rows] on [zones], with each provider's span bounds. */
+    fun layout(
+        rows: List<WidgetRow>,
+        zones: HomeZones,
+    ): WidgetLayout =
+        WidgetLayout(
+            zones.grids,
+            rows.filter { it.page == HOME_PAGE }.map { row ->
+                val bounds = info(row.appWidgetId)?.spanBounds(zones) ?: SpanBounds.fixed(row.cells.span)
+                LaidOutWidget(row.appWidgetId, row.zone, row.cells, bounds)
+            },
+        )
+
+    /** Where a widget of [info] would go: the first of [targets] on the Home Page with room, or a rejection. */
     suspend fun findSpot(
-        targets: List<ZoneTarget>,
         info: AppWidgetProviderInfo,
-    ): Placed<ZoneTarget>? = findSpot(targets, info, dao.all())
+        targets: List<WidgetZoneId>,
+        zones: HomeZones,
+    ): LayoutResult = layout(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones), targets)
 
     /**
-     * Places the bound widget [id] at the first free spot of [targets] and records it. False, and
-     * nothing recorded, when there is no room.
+     * Places the bound widget [id] at the first free spot of [targets] and records it. Nothing is
+     * recorded on a rejection.
      */
     suspend fun place(
         id: Int,
-        targets: List<ZoneTarget>,
-    ): Boolean =
+        targets: List<WidgetZoneId>,
+        zones: HomeZones,
+    ): LayoutResult =
         placing.withLock {
-            val info = info(id) ?: return false
-            val placed = findSpot(targets, info, dao.all()) ?: return false
-            val cells = placed.cells
-            dao.insert(
-                WidgetRow(
-                    appWidgetId = id,
-                    provider = info.provider.flattenToString(),
-                    page = placed.zone.page,
-                    zone = placed.zone.zone.name,
-                    column = cells.column,
-                    row = cells.row,
-                    width = cells.width,
-                    height = cells.height,
-                ),
-            )
-            true
+            val info = info(id) ?: return LayoutResult.Rejected(Rejection.NoRoom)
+            val result = layout(dao.all(), zones).add(id, info.spanBounds(zones), targets)
+            if (result is LayoutResult.Changed) {
+                dao.insert(WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
+            }
+            result
         }
 
     /** Takes a placed widget back out: drops its row and deletes its id. */
@@ -165,23 +154,6 @@ class WidgetHost(
         }
     }
 
-    private fun findSpot(
-        targets: List<ZoneTarget>,
-        info: AppWidgetProviderInfo,
-        rows: List<WidgetRow>,
-    ): Placed<ZoneTarget>? {
-        val cellPx = targets.firstOrNull()?.grid?.cellWidth ?: return null
-        val slots =
-            targets.map { target ->
-                val occupied =
-                    rows
-                        .filter { it.page == target.page && it.zone == target.zone.name }
-                        .map { CellRect(it.column, it.row, it.width, it.height) }
-                ZoneSlots(target, target.grid.columns, target.grid.rows, occupied)
-            }
-        return WidgetPlacement.place(slots, info.size(), cellPx)
-    }
-
     private companion object {
         const val TAG = "WidgetHost"
     }
@@ -195,14 +167,26 @@ internal fun AppWidgetProviderInfo.needsConfigure(): Boolean =
         reconfigurable = widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0,
     )
 
-private fun AppWidgetProviderInfo.size() =
-    WidgetSize(
-        minWidthPx = minWidth,
-        minHeightPx = minHeight,
-        targetCells = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null,
+/**
+ * Interim span bounds until the Widget Catalog (#54): the default span from `minWidth`/`minHeight`
+ * and the target cells, the min span from `minResize*` on the axes the provider resizes on (else
+ * the default), the max span the largest Widget Zone.
+ */
+private fun AppWidgetProviderInfo.spanBounds(zones: HomeZones): SpanBounds {
+    val target = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null
+    val default = WidgetSize(minWidth, minHeight, target).defaultSpan(zones.cellPx)
+    val minResize = WidgetSize(minResizeWidth, minResizeHeight).minSpan(zones.cellPx)
+    val horizontal = resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
+    val vertical = resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0
+    return SpanBounds(
+        default = default,
+        min =
+            CellSpan(
+                if (horizontal) minOf(minResize.width, default.width) else default.width,
+                if (vertical) minOf(minResize.height, default.height) else default.height,
+            ),
+        max = CellSpan(zones.upper.columns, maxOf(zones.upper.rows, zones.lower.rows)),
+        resizesHorizontally = horizontal,
+        resizesVertically = vertical,
     )
-
-private fun WidgetRow.toHomeWidget(): HomeWidget? {
-    val zoneId = WidgetZoneId.entries.firstOrNull { it.name == zone } ?: return null
-    return HomeWidget(appWidgetId, page, zoneId, CellRect(column, row, width, height))
 }

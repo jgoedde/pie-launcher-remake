@@ -12,6 +12,22 @@ data class HomeZones(
     val upper: CellGrid,
     val lower: CellGrid,
 ) {
+    /** The grid of [zone]: the one place that switches between the Home Page's two zones. */
+    fun grid(zone: WidgetZoneId): CellGrid =
+        when (zone) {
+            WidgetZoneId.HomeUpper -> upper
+            WidgetZoneId.HomeLower -> lower
+        }
+
+    fun heightPx(zone: WidgetZoneId): Float =
+        when (zone) {
+            WidgetZoneId.HomeUpper -> upperHeightPx
+            WidgetZoneId.HomeLower -> lowerHeightPx
+        }
+
+    /** Every Widget Zone of the Home Page with its grid, top to bottom. */
+    val grids: Map<WidgetZoneId, CellGrid> get() = WidgetZoneId.entries.associateWith(::grid)
+
     companion object {
         const val LOWER_ZONE_ROWS = 1
 

@@ -33,7 +33,9 @@ import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
-import io.github.jgoedde.pielauncher.core.home.CellRect
+import io.github.jgoedde.pielauncher.core.home.CellSpan
+import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import kotlinx.coroutines.launch
 
@@ -49,7 +51,7 @@ class PinWidgetActivity : ComponentActivity() {
     private var request: LauncherApps.PinItemRequest? = null
     private var pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
 
-    /** The sheet's content once the free spot is known; null cells means "No space". */
+    /** The sheet's content once the free spot is known; a null span means "No space". */
     private var sheet by mutableStateOf<PinSheet?>(null)
 
     private val bind =
@@ -57,11 +59,8 @@ class PinWidgetActivity : ComponentActivity() {
             if (result.resultCode == RESULT_OK) accept() else cancel()
         }
 
-    private val targets: List<ZoneTarget>
-        get() =
-            listOf(WidgetZoneId.HomeUpper, WidgetZoneId.HomeLower).map { zone ->
-                ZoneTarget(HOME_PAGE, zone, graph.homeGeometry.grid(this, zone))
-            }
+    /** Upper Widget Zone first. */
+    private val targets = listOf(WidgetZoneId.HomeUpper, WidgetZoneId.HomeLower)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +71,8 @@ class PinWidgetActivity : ComponentActivity() {
         pendingId = savedInstanceState?.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
         lifecycleScope.launch {
-            sheet = PinSheet(info.loadLabel(packageManager), widgets.findSpot(targets, info)?.cells)
+            val spot = widgets.findSpot(info, targets, graph.homeGeometry.zones(this@PinWidgetActivity))
+            sheet = PinSheet(info.loadLabel(packageManager), (spot as? LayoutResult.Changed)?.widget?.cells?.span)
         }
         setContent {
             PieLauncherTheme {
@@ -107,7 +107,7 @@ class PinWidgetActivity : ComponentActivity() {
         val id = pendingId
         val label = sheet?.label
         lifecycleScope.launch {
-            if (!widgets.place(id, targets)) {
+            if (widgets.place(id, targets, graph.homeGeometry.zones(this@PinWidgetActivity)) !is LayoutResult.Changed) {
                 Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
                 return@launch cancel()
             }
@@ -148,7 +148,7 @@ class PinWidgetActivity : ComponentActivity() {
 
 private class PinSheet(
     val label: CharSequence,
-    val cells: CellRect?,
+    val span: CellSpan?,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -168,22 +168,22 @@ private fun PinWidgetSheet(
         ) {
             Text(stringResource(R.string.pin_widget_title), style = MaterialTheme.typography.titleLarge)
             Text(sheet.label.toString(), style = MaterialTheme.typography.bodyLarge)
-            val cells = sheet.cells
+            val span = sheet.span
             Text(
-                if (cells != null) {
-                    stringResource(R.string.pin_widget_size, cells.width, cells.height)
+                if (span != null) {
+                    stringResource(R.string.pin_widget_size, span.width, span.height)
                 } else {
                     stringResource(R.string.widget_no_space)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (cells != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                color = if (span != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
             Row(
                 Modifier.fillMaxWidth().padding(top = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.pin_widget_cancel)) }
-                Button(onClick = onAdd, enabled = cells != null) { Text(stringResource(R.string.pin_widget_add)) }
+                Button(onClick = onAdd, enabled = span != null) { Text(stringResource(R.string.pin_widget_add)) }
             }
         }
     }

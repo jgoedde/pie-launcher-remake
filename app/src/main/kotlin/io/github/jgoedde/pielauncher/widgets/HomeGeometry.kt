@@ -6,7 +6,6 @@ import android.view.WindowManager
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.home.HomePageLayout
 
@@ -26,17 +25,6 @@ class HomeGeometry {
     }
 
     fun zones(context: Context): HomeZones = laidOut ?: computed(context)
-
-    fun grid(
-        context: Context,
-        zone: WidgetZoneId,
-    ): CellGrid =
-        zones(context).let {
-            when (zone) {
-                WidgetZoneId.HomeUpper -> it.upper
-                WidgetZoneId.HomeLower -> it.lower
-            }
-        }
 
     /** Full window minus the vertical mandatory gesture insets, as in `HomePage`. */
     private fun computed(context: Context): HomeZones {

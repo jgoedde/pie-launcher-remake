@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
 import io.github.jgoedde.pielauncher.drawer.DrawerEntry
@@ -74,7 +75,6 @@ import io.github.jgoedde.pielauncher.settings.SettingsActivity
 import io.github.jgoedde.pielauncher.widgets.AddWidgetContract
 import io.github.jgoedde.pielauncher.widgets.AddWidgetOutcome
 import io.github.jgoedde.pielauncher.widgets.HostedWidget
-import io.github.jgoedde.pielauncher.widgets.WidgetZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
@@ -196,8 +196,9 @@ class HomeActivity : ComponentActivity() {
                                     }
                                 }),
                             widgets = widgets,
+                            layoutOf = graph.widgetHost::layout,
                             widgetContent = { widget, width, height ->
-                                HostedWidget(graph.widgetHost, widget.appWidgetId, width, height, Modifier.fillMaxSize())
+                                HostedWidget(graph.widgetHost, widget.id, width, height, Modifier.fillMaxSize())
                             },
                             onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
                             onZonesLaidOut = graph.homeGeometry::report,

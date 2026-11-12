@@ -95,25 +95,25 @@
             "notNull": true
           },
           {
-            "fieldPath": "column",
+            "fieldPath": "cells.column",
             "columnName": "column",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "row",
+            "fieldPath": "cells.row",
             "columnName": "row",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "width",
+            "fieldPath": "cells.width",
             "columnName": "width",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "height",
+            "fieldPath": "cells.height",
             "columnName": "height",
             "affinity": "INTEGER",
             "notNull": true

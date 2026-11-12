@@ -17,6 +17,13 @@ data class CellGrid(
     /** Empty space above the first row, and again below the last row. */
     val verticalPadding: Float,
 ) {
+    /** The px bounds of [cells] inside the zone, rows starting below the zone's top padding. */
+    fun boundsOf(cells: CellRect): PxRect {
+        val left = cells.column * cellWidth
+        val top = verticalPadding + cells.row * cellHeight
+        return PxRect(left, top, left + cells.width * cellWidth, top + cells.height * cellHeight)
+    }
+
     companion object {
         const val COLUMNS = 4
 

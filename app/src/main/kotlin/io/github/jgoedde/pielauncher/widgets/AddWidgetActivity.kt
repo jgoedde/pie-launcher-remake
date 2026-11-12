@@ -13,6 +13,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.lifecycle.lifecycleScope
 import io.github.jgoedde.pielauncher.PieLauncherApplication
+import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import kotlinx.coroutines.launch
 
 /** How an "Add widget" ended. */
@@ -59,8 +61,8 @@ class AddWidgetActivity : ComponentActivity() {
         WidgetZoneId.entries.firstOrNull { it.name == name } ?: WidgetZoneId.HomeUpper
     }
 
-    private val targets: List<ZoneTarget>
-        get() = listOf(ZoneTarget(HOME_PAGE, zone, graph.homeGeometry.grid(this, zone)))
+    private val targets: List<WidgetZoneId>
+        get() = listOf(zone)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,7 +121,9 @@ class AddWidgetActivity : ComponentActivity() {
     private fun onBound() {
         val info = widgets.info(widgetId) ?: return finishWith(AddWidgetOutcome.Cancelled)
         lifecycleScope.launch {
-            if (widgets.findSpot(targets, info) == null) return@launch finishWith(AddWidgetOutcome.NoSpace)
+            if (widgets.findSpot(info, targets, graph.homeGeometry.zones(this@AddWidgetActivity)) !is LayoutResult.Changed) {
+                return@launch finishWith(AddWidgetOutcome.NoSpace)
+            }
             if (info.needsConfigure()) configure() else onConfigured()
         }
     }
@@ -146,7 +150,8 @@ class AddWidgetActivity : ComponentActivity() {
         // Gone when the process died meanwhile and the startup reconcile deleted the unplaced id.
         if (widgets.info(widgetId) == null) return finishWith(AddWidgetOutcome.Cancelled)
         lifecycleScope.launch {
-            finishWith(if (widgets.place(widgetId, targets)) AddWidgetOutcome.Added else AddWidgetOutcome.NoSpace)
+            val placed = widgets.place(widgetId, targets, graph.homeGeometry.zones(this@AddWidgetActivity))
+            finishWith(if (placed is LayoutResult.Changed) AddWidgetOutcome.Added else AddWidgetOutcome.NoSpace)
         }
     }
 

@@ -1,17 +1,23 @@
 package io.github.jgoedde.pielauncher.platform
 
+import android.content.ComponentName
 import androidx.room.AutoMigration
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 import androidx.room.Upsert
 import io.github.jgoedde.pielauncher.core.drawer.NewBadge
+import io.github.jgoedde.pielauncher.core.home.CellRect
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.shortcuts.ShortcutKey
 import io.github.jgoedde.pielauncher.core.shortcuts.StoredPin
 import kotlinx.coroutines.flow.Flow
@@ -90,20 +96,26 @@ interface NewBadgeDao {
 
 /**
  * One hosted widget's placement (PRD 11): its `appWidgetId`, provider, Page, Widget Zone and the
- * cells it covers. [zone] is a [io.github.jgoedde.pielauncher.widgets.WidgetZoneId] name.
+ * cells it covers. The zone is stored by name, the provider as `ComponentName.flattenToString()`.
  */
 @Entity(tableName = "widget")
+@TypeConverters(ComponentNameConverter::class)
 data class WidgetRow(
     @PrimaryKey @ColumnInfo(name = "app_widget_id") val appWidgetId: Int,
-    /** `ComponentName.flattenToString()`. */
-    val provider: String,
+    val provider: ComponentName,
     val page: Int,
-    val zone: String,
-    val column: Int,
-    val row: Int,
-    val width: Int,
-    val height: Int,
+    val zone: WidgetZoneId,
+    @Embedded val cells: CellRect,
 )
+
+object ComponentNameConverter {
+    @TypeConverter
+    fun toText(name: ComponentName): String = name.flattenToString()
+
+    /** Only ever reads what [toText] wrote. */
+    @TypeConverter
+    fun toComponentName(text: String): ComponentName = checkNotNull(ComponentName.unflattenFromString(text)) { "Bad provider $text" }
+}
 
 @Dao
 interface WidgetDao {

@@ -1,4 +1,4 @@
-package io.github.jgoedde.pielauncher.widgets
+package io.github.jgoedde.pielauncher.core.home
 
 /** Which Widget Zone of a Page a widget lives in. Stored by name in Room, so never rename. */
 enum class WidgetZoneId {
