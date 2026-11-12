@@ -30,7 +30,7 @@ _Avoid_: Resize handles, resize mode
 
 **Widget Picker**:
 The launcher's own sheet listing every app's widgets with previews, grouped by app and searchable, from which a widget is tapped or dragged onto the home screen.
-_Avoid_: Widget list, widget catalog
+_Avoid_: Widget list
 
 **App Drawer**:
 The searchable, alphabetical list of all launchable apps and pinned Shortcuts, as known from standard launchers.
