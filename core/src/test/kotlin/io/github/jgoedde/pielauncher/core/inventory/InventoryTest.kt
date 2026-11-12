@@ -73,4 +73,23 @@ class InventoryTest {
                 .jsonPrimitive.content,
         )
     }
+
+    @Test
+    fun `Shortcuts with the same label are ordered by package, then id`() {
+        val a = InventoryShortcut("app.vanadium.browser", "b-id", "Music", ShortcutKind.Pinned)
+        val b = InventoryShortcut("app.vanadium.browser", "a-id", "Music", ShortcutKind.Pinned)
+        val c = InventoryShortcut("app.aaa", "z-id", "Music", ShortcutKind.Pinned)
+
+        val ids =
+            parse(Inventory.encode(exportedAt, apps, defaults, listOf(a, b, c), emptyList()))
+                .jsonObject
+                .getValue("shortcuts")
+                .jsonArray
+                .map {
+                    it.jsonObject
+                        .getValue("shortcutId")
+                        .jsonPrimitive.content
+                }
+        assertEquals(listOf("z-id", "a-id", "b-id"), ids)
+    }
 }

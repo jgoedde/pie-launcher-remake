@@ -44,7 +44,8 @@ object Inventory {
      * [defaultActivities] maps a package to the activity `getLaunchIntentForPackage` returns, the
      * one an app item without `activity` launches. [pinned] are the launcher's pinned Shortcuts,
      * [published] the apps' manifest and dynamic ones; a Shortcut in both is listed once, with its
-     * [published] kind. Each list is sorted by label in [labelOrder].
+     * [published] kind. Each list is sorted by label in [labelOrder], ties by package, then
+     * activity or Shortcut id, so the file is the same for the same device state.
      */
     fun encode(
         exportedAtMillis: Long,
@@ -61,12 +62,14 @@ object Inventory {
                 exportedAt = Instant.ofEpochMilli(exportedAtMillis).truncatedTo(ChronoUnit.SECONDS).toString(),
                 apps =
                     apps
-                        .sortedWith(compareBy(labelOrder) { it.label })
-                        .map { App(it.packageName, it.activity, it.label, defaultActivities[it.packageName] == it.activity) },
+                        .sortedWith(
+                            compareBy(labelOrder) { it: LaunchableApp -> it.label }.thenBy { it.packageName }.thenBy { it.activity },
+                        ).map { App(it.packageName, it.activity, it.label, defaultActivities[it.packageName] == it.activity) },
                 shortcuts =
                     shortcuts
-                        .sortedWith(compareBy(labelOrder) { it.label })
-                        .map { Shortcut(it.packageName, it.shortcutId, it.label, it.kind, it.disabled.takeIf { d -> d }) },
+                        .sortedWith(
+                            compareBy(labelOrder) { it: InventoryShortcut -> it.label }.thenBy { it.packageName }.thenBy { it.shortcutId },
+                        ).map { Shortcut(it.packageName, it.shortcutId, it.label, it.kind, it.disabled.takeIf { d -> d }) },
             )
         return json.encodeToString(Document.serializer(), document)
     }

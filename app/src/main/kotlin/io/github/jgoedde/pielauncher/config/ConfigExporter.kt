@@ -16,6 +16,7 @@ import io.github.jgoedde.pielauncher.core.inventory.InventoryShortcut
 import io.github.jgoedde.pielauncher.core.inventory.ShortcutKind
 import io.github.jgoedde.pielauncher.platform.AppsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.text.Collator
@@ -40,7 +41,15 @@ class ConfigExporter(
     suspend fun exportInventory(uri: Uri): Boolean {
         val text =
             withContext(Dispatchers.IO) {
-                val launchable = apps.apps.value.map { LaunchableApp(it.packageName, it.componentName.className, it.label) }
+                // The repository starts empty; this launcher's own Settings entry makes the real list non-empty.
+                val launchable =
+                    apps.apps.first { it.isNotEmpty() }.map {
+                        LaunchableApp(
+                            it.packageName,
+                            it.componentName.className,
+                            it.label,
+                        )
+                    }
                 val collator = Collator.getInstance()
                 Inventory.encode(
                     exportedAtMillis = clock.nowMillis(),
