@@ -9,6 +9,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
+import io.github.jgoedde.pielauncher.core.home.DotGrid
 import io.github.jgoedde.pielauncher.core.home.EditMode
 import io.github.jgoedde.pielauncher.core.home.HOME_PAGE
 import io.github.jgoedde.pielauncher.core.home.HomeZones
@@ -87,7 +89,8 @@ typealias WidgetContent = @Composable (widget: LaidOutWidget, width: Dp, height:
  * mandatory system gesture insets, so touches in those strips never reach the launcher. In any
  * Widget Zone a swipe up drags the App Drawer open, a swipe down calls [onSwipeDown] (the
  * notification shade), and a long-press on empty space calls [onEmptyLongPress] with the zone and
- * the press point in that zone. [pieZone] carries the Pie's touch handling. [widgets] are laid
+ * the press point in that zone. [pieZone] carries the Pie's touch handling; [pieOpen] says whether
+ * the Pie shows. [widgets] are laid
  * out on the Pages by [layoutsOf] (with at least the given number of Pages). [onZonesLaidOut]
  * receives the zone grids, so widgets can be placed from outside the home screen.
  *
@@ -100,6 +103,7 @@ internal fun <W> HomePages(
     drawer: DrawerState,
     onSwipeDown: () -> Unit,
     pieZone: Modifier,
+    pieOpen: Boolean,
     widgets: List<W>,
     layoutsOf: (List<W>, HomeZones, Int) -> PageLayouts,
     widgetContent: WidgetContent,
@@ -165,7 +169,7 @@ internal fun <W> HomePages(
                 val layout = dragHere?.preview ?: resizeHere?.preview ?: shown
                 Column(Modifier.fillMaxSize()) {
                     WidgetZoneId.of(page).forEach { zoneId ->
-                        if (zoneId == WidgetZoneId.HomeLower) PieZone(pieZone, blocked = !editor.mode.pieEnabled)
+                        if (zoneId == WidgetZoneId.HomeLower) PieZone(pieZone, blocked = !editor.mode.pieEnabled, pieOpen = pieOpen)
                         WidgetZone(
                             layout = layout,
                             zone = zoneId,
@@ -231,17 +235,27 @@ private val PageIndicatorDot = 6.dp
 private val PageIndicatorGap = 8.dp
 
 /**
- * Invisible at rest; a touch-down here opens the Pie. Swipes here never open the Drawer or the
- * shade. In Edit Mode it is drawn [blocked], since it never holds widgets, and the Pie is off:
- * the blocked area takes every touch.
+ * Marked at rest by a faint dot grid, which fades out while the Pie is [pieOpen]; a touch-down
+ * here opens the Pie. Swipes here never open the Drawer or the shade. In Edit Mode it is drawn
+ * [blocked] instead, since it never holds widgets, and the Pie is off: the blocked area takes
+ * every touch.
  */
 @Composable
 private fun PieZone(
     modifier: Modifier,
     blocked: Boolean,
+    pieOpen: Boolean,
 ) {
     Box(modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight)) {
-        if (blocked) {
+        if (!blocked) {
+            val alpha by animateFloatAsState(if (pieOpen) 0f else 1f, tween(PIE_ZONE_DOTS_FADE_MS), label = "pieZoneDots")
+            Canvas(Modifier.fillMaxSize().padding(PieZoneInset).graphicsLayer { this.alpha = alpha }) {
+                val radius = PieZoneDotRadius.toPx()
+                DotGrid.centres(size.width, size.height, PieZoneDotStep.toPx()).forEach { (x, y) ->
+                    drawCircle(PieZoneDotColor, radius, Offset(x, y))
+                }
+            }
+        } else {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -252,7 +266,7 @@ private fun PieZone(
                                 event.changes.forEach { it.consume() }
                             } while (event.changes.any { it.pressed })
                         }
-                    }.padding(PieZoneBlockedInset)
+                    }.padding(PieZoneInset)
                     .clip(MaterialTheme.shapes.extraLarge)
                     .background(Color.Black.copy(alpha = 0.24f))
                     .border(1.dp, Color.White.copy(alpha = 0.32f), MaterialTheme.shapes.extraLarge),
@@ -261,7 +275,11 @@ private fun PieZone(
     }
 }
 
-private val PieZoneBlockedInset = 8.dp
+private val PieZoneInset = 8.dp
+private val PieZoneDotRadius = 1.2.dp
+private val PieZoneDotStep = 20.dp
+private val PieZoneDotColor = Color.White.copy(alpha = 0.22f)
+private const val PIE_ZONE_DOTS_FADE_MS = 150
 
 /** Launcher3 `REORDER_ANIMATION_DURATION`: neighbours move to their temporary spots. */
 private const val REORDER_ANIMATION_MS = 150

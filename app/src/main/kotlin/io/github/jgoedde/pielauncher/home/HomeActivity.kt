@@ -62,6 +62,7 @@ import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
+import io.github.jgoedde.pielauncher.core.pie.PieState
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
 import io.github.jgoedde.pielauncher.drawer.DrawerEntry
 import io.github.jgoedde.pielauncher.drawer.DrawerEntryActions
@@ -276,6 +277,7 @@ class HomeActivity : ComponentActivity() {
                                         is LaunchTarget.Shortcut -> graph.appLauncher.launch(target.shortcut)
                                     }
                                 }),
+                            pieOpen = pie.state is PieState.Open,
                             widgets = widgets,
                             layoutsOf = { rows, zones, minPages -> graph.widgetHost.layouts(rows, zones, minPages) },
                             widgetContent = { widget, _, _ ->
