@@ -28,6 +28,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
+import io.github.jgoedde.pielauncher.platform.wallpaperPickerIntent
 import java.io.IOException
 
 /**
@@ -115,8 +116,7 @@ class SettingsActivity : ComponentActivity() {
 
                                 override fun resetConfig() = viewModel.askReset()
 
-                                override fun openWallpaperStyle() =
-                                    start(Intent(Intent.ACTION_SET_WALLPAPER).putExtra(WALLPAPER_LAUNCH_SOURCE, LAUNCH_SOURCE_LAUNCHER))
+                                override fun openWallpaperStyle() = start(wallpaperPickerIntent())
 
                                 override fun openGitHub() = start(Intent(Intent.ACTION_VIEW, GITHUB_URL.toUri()))
 
@@ -175,9 +175,5 @@ class SettingsActivity : ComponentActivity() {
 
         /** Some file managers label JSON as plain text or octet-stream. */
         val JSON_TYPES = arrayOf("application/json", "text/plain", "application/octet-stream")
-
-        /** What Launcher3 sends, so the picker opens on its customisation page. */
-        const val WALLPAPER_LAUNCH_SOURCE = "com.android.wallpaper.LAUNCH_SOURCE"
-        const val LAUNCH_SOURCE_LAUNCHER = "app_launched_launcher"
     }
 }

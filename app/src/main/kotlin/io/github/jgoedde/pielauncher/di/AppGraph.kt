@@ -27,6 +27,8 @@ import io.github.jgoedde.pielauncher.platform.IconSettingsStore
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.NotificationShade
 import io.github.jgoedde.pielauncher.platform.ShortcutPins
+import io.github.jgoedde.pielauncher.widgets.HomeGeometry
+import io.github.jgoedde.pielauncher.widgets.WidgetHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 
@@ -46,6 +48,8 @@ interface AppGraph {
     val configExporter: ConfigExporter
     val importRecordStore: ImportRecordStore
     val pieItemResolver: PieItemResolver
+    val widgetHost: WidgetHost
+    val homeGeometry: HomeGeometry
     val appScope: CoroutineScope
 
     @Provides

@@ -5,7 +5,7 @@ Status: implementation-ready. This document stitches together every decision rec
 Companion documents:
 
 - [`GLOSSARY.md`](../GLOSSARY.md): the domain vocabulary. Use these terms in code, UI strings and commits. Capitalised terms in this document (Pie, Layer, Pie Item, …) are glossary terms.
-- [`docs/adr/`](adr/): architecture decisions 0001–0005.
+- [`docs/adr/`](adr/): architecture decisions 0001–0007.
 - [`spec/pie-config.schema.json`](../spec/pie-config.schema.json), [`spec/pie-config.example.json`](../spec/pie-config.example.json), [`spec/inventory.example.json`](../spec/inventory.example.json): the Pie Config format and the Inventory export.
 - [`LICENSE`](../LICENSE) (Apache-2.0) and [`NOTICE`](../NOTICE).
 
@@ -40,14 +40,15 @@ Sources: [How does widget editing work in the Widget Zones?](https://github.com/
 - Pages scroll horizontally in a stock Compose `HorizontalPager`.
 - The **Home Page** is always the leftmost Page and cannot be removed. Launcher start and the Home button land on it. It is the only Page with a Pie Zone.
 - Every other Page is one Widget Zone filling its full height. No Pie there.
-- New Pages are added only on the right: via the empty-space menu ("Add Page"), or by dwelling with a dragged widget at the right edge. Empty non-Home Pages are removed when Edit Mode ends. No Page reordering.
+- New Pages are added only on the right: by dwelling with a dragged widget at the right edge, and when a tap-add from the Widget Picker or a widget Pin Request finds no room on any existing Page (a new Page is appended for it). There is no "Add Page" menu entry. Empty non-Home Pages are removed when Edit Mode ends. No Page reordering.
+- Until Pages exist ([#37](https://github.com/jgoedde/pie-launcher-remake/issues/37)), "No room on this home screen" is shown instead of appending a Page.
 - Page indicator in Launcher3 style, just above the gesture strip, visible only while swiping Pages and in Edit Mode.
 
 ### 3.2 Home Page layout
 
 All values are code constants, never configuration.
 
-- Top to bottom: **upper Widget Zone** (takes the remaining height), **Pie Zone** (~240 dp tall, full width), **lower Widget Zone** (exactly one cell row).
+- Top to bottom: **upper Widget Zone** (takes the remaining height), **Pie Zone** (~240 dp tall, full width), **lower Widget Zone** (exactly two cell rows).
 - Everything sits above `WindowInsets.mandatorySystemGestures`. Touches in that bottom strip never reach the launcher.
 - The lower Widget Zone is also where a swipe-up for the App Drawer typically starts.
 - The Pie Zone is invisible at rest. In Edit Mode it is drawn as a blocked area.
@@ -56,9 +57,10 @@ All values are code constants, never configuration.
 
 ### 3.3 Cell grid
 
-- Every Widget Zone uses a 4-column grid. Cell width = zone width / 4. Cells are roughly square: row count = floor(zone height / cell height). Leftover height is spread evenly as padding; cells are not stretched.
+- Every Widget Zone uses a 4-column grid with a constant gap between cells (~16 dp, a code constant). Cell width = (zone width − 3 gaps) / 4. Cells are roughly square: row count = the largest number of rows (with gaps between them) that fits the zone height. Leftover height is spread evenly as padding; cells are not stretched.
 - Non-Home Pages use the same cell size over their full height.
 - A widget belongs to exactly one Widget Zone. Nothing ever occupies the Pie Zone.
+- A widget spans whole cells plus the gaps between them. Spacing between widgets comes from the gap only (section 7.1).
 
 ## 4. Pie
 
@@ -128,7 +130,7 @@ Sources: [Do hosted widgets and launcher gestures coexist in Compose?](https://g
 | Swipe up | App Drawer opens, following the finger (section 6) |
 | Swipe down | Notification shade opens (animated, not finger-tracking) |
 | Horizontal swipe | Page change (`HorizontalPager`) |
-| Long-press on a widget | Widget menu, drag to move (section 7.2) |
+| Long-press on a widget | Widget popup and Resize Frame together; drag to move (section 7.3) |
 | Long-press on empty Widget Zone space | Empty-space menu (section 7.2) |
 | Double-tap | nothing (out of scope) |
 
@@ -136,7 +138,8 @@ Sources: [Do hosted widgets and launcher gestures coexist in Compose?](https://g
 
 - Pages use the stock `HorizontalPager`. Swipe-up and swipe-down are ordinary Compose vertical drag detection on the home surface (Main pass). No custom intercept layer.
 - `AndroidView` honours `requestDisallowInterceptTouchEvent`. On a scrollable widget, vertical drags belong to the widget: no Drawer or shade from inside a list. Horizontal drags still change the Page unless the widget scrolls horizontally.
-- Widget long-press is detected in a View wrapper: a `FrameLayout` around `AppWidgetHostView` with a timer in `onInterceptTouchEvent` (Launcher3 `CheckLongPressHelper` style). It cancels on touch slop; once it fires it takes the touch away from the widget.
+- Widget long-press is detected in a View wrapper: a `FrameLayout` around `AppWidgetHostView` with a timer in `onInterceptTouchEvent` (Launcher3 `CheckLongPressHelper` style), firing after 0.75 × the system long-press timeout with a `LONG_PRESS` haptic. It cancels on touch slop; once it fires it takes the touch away from the widget.
+- On a scrollable widget the wrapper calls `requestDisallowInterceptTouchEvent` on touch-down and reverts it when a widget drag starts.
 
 ### 5.2 Notification shade
 
@@ -148,7 +151,7 @@ Sources: [Do hosted widgets and launcher gestures coexist in Compose?](https://g
 
 - At rest on the home surface, both side edges are excluded from the system back gesture over the full height (Widget Zones and Pie Zone, every Page). Exclusion width = the left/right `systemGestures` inset. The home activity is exempt from the 200 dp cap.
 - Effect: a Page swipe can start at the very edge, and a touch-down at the edge of the Pie Zone opens the Pie (clamped).
-- The exclusion is dropped while an overlay is open: App Drawer, Edit Mode, or any menu (widget menu, empty-space menu). Back then closes that overlay.
+- The exclusion is dropped while an overlay is open: App Drawer, Edit Mode, or any popup (widget popup, empty-space menu). Back then closes that overlay.
 
 ### 5.4 Home button / gesture
 
@@ -199,7 +202,7 @@ Source: [How does the App Drawer behave?](https://github.com/jgoedde/pie-launche
 
 ### 6.6 Long-press menu
 
-- App: its Shortcuts first, then **App info**, then **Uninstall** (hidden for system apps).
+- App: its Shortcuts first, then **Widgets** (only if the app has at least one widget provider; opens the Widget Picker filtered to that app, section 7.4), then **App info**, then **Uninstall** (hidden for system apps).
 - At most 5 Shortcuts: manifest Shortcuts before dynamic ones, each by the app's rank; the rest are not shown.
 - Pinned Shortcut: **Remove** (section 7.5) and **App info** of the owning app.
 - Placement: the menu opens above and to the left of the touch point, away from a right thumb. Its end edge sits at the touch X and its bottom edge on the pressed row's top edge, so the row stays visible. Physical direction, also in RTL; no handedness setting.
@@ -207,46 +210,78 @@ Source: [How does the App Drawer behave?](https://github.com/jgoedde/pie-launche
 
 ## 7. Widgets
 
-Sources: [How does a Compose launcher host app widgets?](https://github.com/jgoedde/pie-launcher-remake/issues/2) ([findings](https://github.com/jgoedde/pie-launcher-remake/blob/research/widget-hosting/research/widget-hosting.md)), [How does widget editing work in the Widget Zones?](https://github.com/jgoedde/pie-launcher-remake/issues/9), [Which widget-hosting operational concerns must v1 handle?](https://github.com/jgoedde/pie-launcher-remake/issues/19) ([findings](https://github.com/jgoedde/pie-launcher-remake/blob/research/widget-operations/research/widget-operations.md)).
+Sources: [How does a Compose launcher host app widgets?](https://github.com/jgoedde/pie-launcher-remake/issues/2) ([findings](https://github.com/jgoedde/pie-launcher-remake/blob/research/widget-hosting/research/widget-hosting.md)), [Which widget-hosting operational concerns must v1 handle?](https://github.com/jgoedde/pie-launcher-remake/issues/19) ([findings](https://github.com/jgoedde/pie-launcher-remake/blob/research/widget-operations/research/widget-operations.md)), [Widgets: add, edit, move and resize like Launcher3](https://github.com/jgoedde/pie-launcher-remake/issues/34) ([findings](https://github.com/jgoedde/pie-launcher-remake/blob/research/launcher3-widget-ux/research/launcher3-widget-ux.md)), [ADR 0006](adr/0006-own-widget-picker.md), [ADR 0007](adr/0007-widget-reflow.md).
 
-### 7.1 Hosting
+Widget handling mimics AOSP Launcher3 on Android 17. The reference is the GrapheneOS stock launcher on the owner's Pixel 6. All numbers below are code constants.
+
+### 7.1 Hosting and rendering
 
 - Classic `AppWidgetHost` / `AppWidgetManager` / `AppWidgetHostView`; nothing Compose-specific. One process-wide `AppWidgetHost` with a fixed host id, listening while the Home Activity is started (`startListening` on `onStart`, `stopListening` on `onStop`).
-- Each widget is an `AppWidgetHostView` inside an `AndroidView`, wrapped in the long-press `FrameLayout` (5.1). Size it with `updateAppWidgetSize(Bundle, List<SizeF>)` from the cell size once the view is attached; this also fills in `OPTION_APPWIDGET_DISPLAY_ID`.
+- Each widget is an `AppWidgetHostView` inside an `AndroidView`, wrapped in the long-press `FrameLayout` (5.1).
 - Manifest needs `<queries><intent><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent></queries>`, otherwise `getInstalledProviders()` returns only system packages.
-- Monet colours pushed into every widget with `setColorResources`. Always on, no toggle.
-- Memory guardrails: async inflation via `setExecutor`, own `getErrorView()`, no launcher-side widget bitmap caching, and at startup log any `MemoryLimiter` exits from `ApplicationExitInfo`. No eviction or widget limit.
+- **No framework padding.** `setPadding` is a no-op while the widget is being set. A widget fills its cells; spacing comes from the cell gap (3.3).
+- **Rounded corners.** On layout, the wrapper clips the widget's background to `system_app_widget_background_radius`. The background is, in order: the single `@android:id/background` view; else the first drawing descendant or one with ≥ 2 visible children; else the host itself. A widget whose background has that id and sets `clipToOutline` rounds itself and is not clipped again.
+- `setOnLightBackground` follows the wallpaper's dark-text hint. No `setColorResources`.
+- **Size reporting.** Sizes go out only through `AppWidgetManager.updateAppWidgetOptions`: the size list for the widget's span (cell size × span plus the gaps between cells, in dp, portrait only) and the min/max derived from it. Sent at bind, after add, after a shrink on drop, and live during resize; only when the list changed. `AppWidgetHostView.updateAppWidgetSize` is not used.
+- **Spans** follow Launcher3 `initSpans`: `span(size) = max(1, ceil((size + gap) / (cell + gap)))`. Default span from `minWidth/minHeight`, unless `targetCellWidth/Height` lies within [min span, max span] on both axes. Min span from `minResizeWidth/Height`, capped at the default span. Max span from `maxResizeWidth/Height`, else the grid. An axis is resizable only if its `resizeMode` bit is set and a real range exists.
+- **Too large:** the min span exceeds the largest Widget Zone (the Home Page's upper zone).
+- Memory guardrails: async inflation via `setExecutor`, own `getErrorView()`, no launcher-side widget bitmap caching, and at startup log any `MemoryLimiter` exits from `ApplicationExitInfo`. No eviction or widget limit. Host views of a destroyed Activity are released, so a rotation or theme change leaves no stale view.
 - `onAppWidgetRemoved`: drop the layout row. Re-checking broken widgets on providers-changed is nice-to-have.
 - At startup, reconcile Room against `getAppWidgetIds()`: delete host ids with no row and rows with no host id.
-- Visibility tracking for engagement metrics (`start/stopVisibilityTracking()` for the visible Page in the normal state) is nice-to-have: add it if cheap, else defer. Clicks and scrolls are recorded automatically.
-- Prior art: Kvaesitso (GPL, read only, section 13) for Compose embedding; Launcher3/Lawnchair for the listening state machine, configure rules, size bundles and touch interception. Launcher3's grid, `DeviceProfile` and drag plumbing are not reused.
+- Visibility tracking for engagement metrics (`start/stopVisibilityTracking()` for the visible Page in the normal state) is nice-to-have. Clicks and scrolls are recorded automatically.
+- Prior art: Kvaesitso (GPL, read only, section 13) for Compose embedding; Launcher3/Lawnchair (Apache-2.0) for the listening state machine, configure rules, size bundles, touch interception, `ReorderAlgorithm` and the Resize Frame. Launcher3's `DeviceProfile` and drag plumbing are not reused.
 
 ### 7.2 Menus and Edit Mode
 
-- **Edit Mode** is the home state while a widget is being moved or resized. In Edit Mode the Pie Zone shows as a blocked area, the Page indicator is visible, and back or Home leaves it.
-- **Long-press on a widget** opens its context menu: Resize, Reconfigure (only if the provider is `reconfigurable`), Remove. Dragging out of the long-press starts a move instead.
-- **Long-press on empty Widget Zone space** opens a menu: Add widget, Add Page, Wallpaper (system wallpaper picker), Settings.
+- **Long-press on empty Widget Zone space** opens a Launcher3-style popup anchored at the touch point: "Wallpaper & style" (system wallpaper and style picker), "Widgets" (Widget Picker, 7.4), "Home settings" (Launcher Settings). No "Add Page".
+- **Long-press on a widget** opens, at the same moment, the widget popup and the Resize Frame (7.3). The popup has "Remove", plus "Widget settings" when the provider is `reconfigurable`. Moving the finger past touch slop after the long-press closes the popup and starts a move.
+- "Widget settings" reopens the configure screen through the trampoline Activity. A cancel keeps the widget as it was.
+- **Edit Mode** lasts from the long-press on a widget until the move has ended and the Resize Frame has closed. Home holds one state: idle, popup and frame open, dragging, or resizing. Outside idle the Pie Zone is drawn blocked, the Pie is off and the Page indicator is visible.
+- Back or Home returns to idle and commits the current layout; it does not undo it.
 
-### 7.3 Move and resize
+### 7.3 Move, reflow and resize
 
-- Everything snaps to cells. A dragged widget may cross the Pie Zone into the other Widget Zone. Dwelling ~500 ms at the left or right edge changes the Page (creating a new Page at the right end). The widget keeps its cell size.
-- A drop onto occupied cells, or where the widget does not fit, is rejected: the widget springs back. No reflow, no clipping.
-- Resize shows a frame with four handles, snapping to cells, bounded by the provider's min/max resize size, the zone edges and occupied cells. Tapping outside ends it.
+Reflow follows Launcher3 `ReorderAlgorithm` ([ADR 0007](adr/0007-widget-reflow.md)). The logic is the **Widget Layout** module in `:core`.
+
+- **Move.** A dragged widget snaps to cells, and its target cells are previewed. It may cross the Pie Zone into the other Widget Zone. Dwelling ~500 ms at the left or right edge changes the Page (creating a new Page at the right end, 3.1).
+- **Reflow.** After the finger rests 650 ms, the reorder preview is computed in this order: push neighbours aside; else the closest empty space without moving anything; else drop in place; else shrink the dragged widget one cell at a time (X, then Y) down to its min span. Moving neighbours animate (150 ms) and wiggle (12 %) in their temporary spots. The drop commits the preview shown.
+- Reflow stays within the target Widget Zone. Nothing is pushed into or across the Pie Zone. A widget moved into the two-row lower Widget Zone shrinks to fit when its min span allows.
+- A drop on the Pie Zone, or where nothing fits even at min span, is rejected: "No room on this home screen", and the widget springs back.
+- A widget that shrank on drop gets its new size (7.1).
+- **Drop-target bar** at the top while dragging: "Remove", plus "Widget settings" when reconfigurable.
+- **Resize Frame.** A rounded outline in the accent colour (2 dp stroke, system widget corner radius), with a dot handle at the middle of each edge (48 dp touch target), only on the resizable axes. While one handle is dragged the others fade out. Past 0.66 of a cell the widget grows or shrinks by one cell with a `SEGMENT_TICK` haptic. The size is bounded by the min/max span and the zone edges. Neighbours are pushed aside; when they can't move, the size does not grow. The widget redraws live. On release the frame snaps to the new bounds (150 ms). A tap outside closes it and commits the layout. A widget below its min span (after a display change) can still be resized.
 
 ### 7.4 Add
 
-1. "Add widget" allocates an id and launches the system picker `ACTION_APPWIDGET_PICK` (exists on the owner's device: `com.android.settings/.AppWidgetPickActivity`). No custom picker. The picker binds the widget itself, so no `ACTION_APPWIDGET_BIND` dialog is expected; still fall back to `bindAppWidgetIdIfAllowed` → `ACTION_APPWIDGET_BIND` if the returned id is not bound.
-2. Configure via `startAppWidgetConfigureActivityForResult` through the trampoline Activity, unless the provider sets both `configuration_optional` and `reconfigurable`.
-3. Place it in the long-pressed Widget Zone at the first free spot. If the min size does not fit or no space is free: refuse with a "No space" snackbar and delete the id.
-4. Persist id + placement. Any cancel along the way deletes the id. Cancelling a reconfigure keeps the widget.
+- **Widget Picker** ([ADR 0006](adr/0006-own-widget-picker.md)): its own Activity with a Compose bottom sheet titled "Widgets". Opened from the empty-space menu, or filtered to one app from the App Drawer "Widgets" entry (6.6). The system `ACTION_APPWIDGET_PICK` picker is not used.
+  - Closes on swipe down, handle drag, back, or screen lock.
+  - One expandable header per app (icon, name, widget count), apps alphabetical. No tabs (no Featured, no Work).
+  - Each tile: preview drawn at the default size, label, "W × H", description. Preview source, in order: generated preview (only when the framework returns one), `previewLayout`, `previewImage`, a placeholder of the cell size.
+  - Search: lowercased whitespace tokens over app name, widget label and description. An app-name match shows all of that app's widgets. Order stays alphabetical by app.
+  - Too-large widgets are greyed out with "Too large for this home screen".
+- **Tap-add.** Tapping a tile shows an "Add" button over it; tapping the tile again hides it. "Add" closes the picker and places the widget at its default span, at the first free spot scanning row by row: first the long-pressed Widget Zone, then the other one. From the filtered picker: the Home Page, upper zone first. If nothing fits, a Page is appended (3.1).
+- **Drag-to-place.** Touch and hold a preview: `LONG_PRESS` haptic, the picker finishes, and the widget follows the finger over Home through system drag-and-drop (`DRAG_FLAG_GLOBAL`, own MIME type with the provider component). Home turns it into the normal move with reflow (7.3).
+- **Bind and configure.**
+  1. Allocate an id, then `bindAppWidgetIdIfAllowed` with the size options for the target span; else the system `ACTION_APPWIDGET_BIND` dialog.
+  2. Configure via `startAppWidgetConfigureActivityForResult` through the trampoline Activity, unless the provider sets both `configuration_optional` and `reconfigurable`.
+  3. Meanwhile a placeholder with the preview sits in the target cells.
+  4. On success, persist id + placement and open the Resize Frame. Any cancel deletes the id and removes the placeholder.
 
 ### 7.5 Remove
 
-Via the context menu, or by dropping onto a "Remove" bar that appears at the top while dragging. Removal is immediate (`deleteAppWidgetId`) with an Undo snackbar, no confirmation dialog. Undo restores the row; implement it by delaying `deleteAppWidgetId` until the snackbar expires.
+- Via the widget popup, or by dropping on "Remove" in the drop-target bar. No confirmation dialog.
+- The widget disappears at once and an "Item removed" snackbar with "Undo" shows for 4 s (180 ms show and hide).
+- `deleteAppWidgetId` and the row delete run only when the snackbar times out. Undo restores the row and the view in the same cells, with its state intact.
 
 ### 7.6 App-initiated widget pinning
 
-`requestPinAppWidget` (`PinItemRequest` of type widget) is accepted, sharing the Pin Request plumbing (section 7.7). A confirmation sheet shows the widget name and size. The widget goes to the first free spot on the current Page (upper zone first on the Home Page). If there is no space: refused with "No space".
+- `requestPinAppWidget` (`PinItemRequest` of type widget) opens a Launcher3-style sheet in the pin Activity, built from the Widget Picker's preview and tile components. It shares the Pin Request plumbing with section 7.7.
+- Title: the app's name. Hint: "Touch and hold to move a widget." A preview card shows label, "W × H" and description; an app-supplied preview takes precedence.
+- Buttons "Cancel" and "Add to home screen".
+- "Add to home screen": bind (fall back to the bind dialog; a cancelled bind deletes the id and keeps the sheet open), `accept()` with the size options and the id, then place at the first free spot on the Home Page, upper zone first. If nothing fits, a Page is appended (3.1). The launcher shows no configure screen; the app configures the widget itself.
+- Touch and hold the preview card: same drag-to-place as the Widget Picker.
+- "Too large for this home screen" (and, until Pages exist, "No room on this home screen") is computed before the sheet shows and disables the button.
+- Declining leaves nothing behind.
 
 ### 7.7 Pin Requests (Shortcuts)
 
@@ -365,7 +400,7 @@ Source: [What does the launcher settings screen hold?](https://github.com/jgoedd
 
 ### 10.1 Entry points
 
-- Empty-space long-press menu → Settings.
+- Empty-space long-press menu → "Home settings".
 - Its own Drawer Entry "Pie Launcher Settings" (a separate `LAUNCHER` activity), so settings stay reachable when the home screen is full or the Pie Config is broken. Being an app, it can also be a Pie Item.
 
 ### 10.2 Structure
@@ -394,13 +429,15 @@ No Hover Delay, gesture mappings, Drawer, widget, Page, icon theming or diagnost
 Source: [What is the app architecture?](https://github.com/jgoedde/pie-launcher-remake/issues/10).
 
 - **Modules** ([ADR 0001](adr/0001-pure-kotlin-core-module.md)):
-  - `:core`, pure Kotlin/JVM: Pie geometry and hit-testing, the Pie gesture state machine, Layer navigation, Pie Config decoding and validation, App Drawer search ranking.
-  - `:app`: Android, Compose UI and platform adapters, packaged by feature: `pie`, `home`, `drawer`, `icons`, `config`, `platform`.
+  - `:core`, pure Kotlin/JVM: Pie geometry and hit-testing, the Pie gesture state machine, Layer navigation, Pie Config decoding and validation, App Drawer search ranking, and the widget domain in the `home` package (with the other Home Page logic):
+    - **Widget Layout**: all widgets of a Page (Widget Zone, cell rect, span bounds) and each zone's grid. Operations add, drag over, drop, resize, remove and undo; each returns a new layout or a rejection ("no room", "too large", Pie Zone). Holds the reorder rules, cell bounds and hit-testing (7.3).
+    - **Widget Catalog**: pure functions over provider facts: spans, the too-large flag, search, grouping by app, the size list (7.1, 7.4).
+  - `:app`: Android, Compose UI and platform adapters, packaged by feature: `pie`, `home`, `drawer`, `widgets`, `icons`, `config`, `platform`. `widgets` holds the host, the host view wrapper, the Widget Picker and pin Activities, bind/configure, size reporting and the drag hand-off; it maps platform provider info to Widget Catalog facts.
 - **State:** plain `ViewModel` + `StateFlow`, unidirectional, no MVI framework. The Pie gesture is not routed through a ViewModel: the `:core` state machine lives in the Compose pointer handler; the ViewModel only supplies the resolved Pie Config.
 - **One source for apps and Shortcuts:** a repository in `platform` listens to `LauncherApps.Callback` and Shortcut changes and exposes one `StateFlow`. The App Drawer, Pie Item resolution (including Unavailable Items) and the Inventory export all read from it.
-- **Persistence** ([ADR 0002](adr/0002-persistence-split.md)): Pie Config = JSON file in internal storage; Room = widget layout (Pages; per widget: id, provider `ComponentName`, Page index, zone, column/row, width/height in cells) and Drawer state (New Badge, pinned Shortcut records); Preferences DataStore = settings (Themed Icons, Icon Shape, last-import metadata).
+- **Persistence** ([ADR 0002](adr/0002-persistence-split.md)): Pie Config = JSON file in internal storage; Room = widget layout (Pages; per widget: id, provider `ComponentName`, Page index, zone, cell rect as one embedded value) and Drawer state (New Badge, pinned Shortcut records); Preferences DataStore = settings (Themed Icons, Icon Shape, last-import metadata).
 - **DI:** Metro 1.x ([ADR 0004](adr/0004-metro-dependency-injection.md)).
-- **Activities:** one portrait-only Home Activity (`MAIN` + `HOME` + `DEFAULT`), the widget-configure trampoline Activity, the invisible `CONFIRM_PIN_SHORTCUT` / pin-widget activity, and the Settings Activity (`LAUNCHER`). No navigation library: Drawer and menus are state-driven overlays.
+- **Activities:** one portrait-only Home Activity (`MAIN` + `HOME` + `DEFAULT`), the Widget Picker Activity (ADR 0006), the widget-configure trampoline Activity, the pin Activity (invisible for `CONFIRM_PIN_SHORTCUT`, the pin sheet for widgets), and the Settings Activity (`LAUNCHER`). No navigation library: Drawer, popups and Edit Mode are state-driven overlays.
 - **Permissions:** `QUERY_ALL_PACKAGES`, `EXPAND_STATUS_BAR`, plus the `<queries>` entry from 7.1.
 - **Manifest:** `android:allowBackup="false"`, so auto-backup never restores a Room layout with stale widget ids. No backup/restore of widget ids in v1.
 - **Tests:** JUnit in `:core` carries most testing; few unit tests in `:app`; no instrumented or screenshot tests in CI.
@@ -440,7 +477,7 @@ What the owner does to move from the current launcher to Pie Launcher. The build
 2. Open "Pie Launcher Settings" from the current launcher. Tap the default-home banner and make Pie Launcher the home app.
 3. The Default Config is generated on first start, so the Pie works immediately.
 4. **Re-add every PWA in its browser** (Vanadium, Firefox: "Add to Home screen" / "Add app"). Pins made for the previous launcher are invisible to Pie Launcher. Vanadium gives each re-added PWA a new id; Firefox reuses the start URL.
-5. Add widgets via the empty-space menu.
+5. Add widgets via the empty-space menu → "Widgets".
 6. Export the Inventory, write the Pie Config by hand (the old Fly-Pie config is not migrated), import it.
 
 Data-loss notes:
@@ -465,7 +502,16 @@ Data-loss notes:
 To verify on the owner's Pixel 6 (GrapheneOS, API 37) during the build:
 
 - "Wallpaper & style" Style and Shape take effect (else add the launcher-side fallback settings, section 8.4).
-- `ACTION_APPWIDGET_PICK` with an allocated id adds and binds a widget.
+- Widgets (section 7):
+  - Widget Picker shows previews; tap-add and drag-to-place both work.
+  - The bind dialog appears when the launcher is not allow-listed; generated previews appear once it is.
+  - Long-press on a widget opens the popup and the Resize Frame together; moving starts a drag.
+  - Scrollable widget lists scroll; horizontal Page swipes still work.
+  - Reflow on move and on resize looks and feels like the stock launcher.
+  - Remove with undo restores the widget intact.
+  - Corners are rounded; no extra padding; `dumpsys appwidget` shows reported sizes equal to the cell size.
+  - A pin sheet from a real app (e.g. a clock or notes app) adds the widget, by button and by drag.
+  - The existing Analog clock test widget can be removed through the new UI.
 - Pin Requests from Vanadium and Firefox land in the App Drawer.
 - Pie motion, shapes and the numeric defaults in section 4 feel right; tune in code.
 - Drawer search stays within the ~4 ms per keystroke budget.
@@ -485,6 +531,10 @@ To verify on the owner's Pixel 6 (GrapheneOS, API 37) during the build:
 - Per-app / per-item icon override.
 - Icon packs (e.g. Lawnicons).
 - Widget-id backup/restore (`ACTION_APPWIDGET_HOST_RESTORED`).
+- TalkBack operation of widgets: no accessibility custom actions for move, resize, remove or "Widget settings".
+- Widget Picker tabs (Featured, Personal, Work), picker blur, a floating or two-pane picker.
+- The +/− single-pointer resize buttons (Launcher3 `fix_widget_single_ptr_resize`).
+- Folders, app icons on the Home Page, multi-select home editing.
 - AccessibilityService shade fallback.
 
 ## 18. Gaps filled by this document
@@ -494,9 +544,12 @@ These points were not stated in any ticket. This document fills them with the ob
 - Releasing on a Layer Switch, or hovering a Shortcut item, does nothing beyond what section 4 says (no Progress Disc for Shortcut items or apps without Shortcuts).
 - The Pie is disabled in Edit Mode.
 - The Pie's Shortcut list shows the manifest and dynamic Shortcuts that `LauncherApps.getShortcuts` returns for the activity, in the order returned.
-- **Edit Mode** is defined as the state while a widget is moved or resized (added to `GLOSSARY.md`).
+- **Edit Mode** lasts from a long-press on a widget until its move has ended and its Resize Frame has closed (`GLOSSARY.md`).
+- Leaving Edit Mode with back or Home commits the current layout; it does not undo it.
+- The cell gap (~16 dp) is a code constant, not derived from Launcher3's `DeviceProfile`.
 - The imported file is stored normalized, so the config export can be the byte copy ADR 0002 describes and still be the normalized output the schema ticket asked for.
-- Widget removal undo delays `deleteAppWidgetId` until the snackbar expires, mirroring Shortcut removal.
+- Widget removal undo delays `deleteAppWidgetId` and the row delete until the snackbar expires, mirroring Shortcut removal.
+- A tap-add from the App Drawer's filtered Widget Picker goes to the Home Page, upper Widget Zone first, as a Pin Request does.
 - The Default Config fills up to 8 items with other launchable apps alphabetically.
 - Material Symbols Rounded is bundled as a font with its codepoints file, for icon validation and drawing.
 - Themed Icons and Icon Shape values are stored in Preferences DataStore.

@@ -21,8 +21,16 @@ The leftmost Page, which cannot be removed and is the only Page with a Pie Zone;
 _Avoid_: Default page, main screen
 
 **Edit Mode**:
-The home-screen state while a widget is being moved or resized; the Pie Zone shows as blocked, the Page indicator is visible, and Home or back leaves it.
+The home-screen state from a long-press on a widget until its move has ended and its Resize Frame has closed; the Pie Zone shows as blocked, the Pie is off, the Page indicator is visible, and Home or back leaves it.
 _Avoid_: Jiggle mode, customise mode
+
+**Resize Frame**:
+The outline with edge handles that appears around a widget on long-press or after it is added; dragging a handle changes the widget's size cell by cell.
+_Avoid_: Resize handles, resize mode
+
+**Widget Picker**:
+The launcher's own sheet listing every app's widgets with previews, grouped by app and searchable, from which a widget is tapped or dragged onto the home screen.
+_Avoid_: Widget list
 
 **App Drawer**:
 The searchable, alphabetical list of all launchable apps and pinned Shortcuts, as known from standard launchers.
@@ -79,7 +87,7 @@ An app-provided action (static, dynamic or pinned) that launches a specific part
 _Avoid_: Deep link, quick action
 
 **Pin Request**:
-An app's request to add one of its Shortcuts to the launcher; Pie Launcher always accepts it, adding the Shortcut to the App Drawer and the Inventory but never to a Layer.
+An app's request to add one of its Shortcuts or widgets to the launcher. A Shortcut is always accepted and goes to the App Drawer and the Inventory, never to a Layer; a widget is added to the home screen only after the user confirms it.
 _Avoid_: Add to home screen, install request
 
 ## Icons

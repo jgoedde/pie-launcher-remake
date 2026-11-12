@@ -5,6 +5,7 @@
     <string name="drawer_app_info">App info</string>
     <string name="drawer_uninstall">Uninstall</string>
     <string name="drawer_remove">Remove</string>
+    <string name="drawer_widgets">Widgets</string>
     <string name="drawer_new_badge">New</string>
     <string name="drawer_removed">“%1$s” removed</string>
     <string name="drawer_undo">Undo</string>
@@ -65,6 +66,28 @@
     <string name="import_rejected_title">Cannot import this file</string>
     <string name="import_rejected_text">Nothing was changed. Fix these errors and import again:</string>
     <string name="unavailable_item">%1$s, item %2$d: %3$s</string>
+    <string name="home_menu_wallpaper_style">Wallpaper &amp; style</string>
+    <string name="home_menu_widgets">Widgets</string>
+    <string name="home_menu_home_settings">Home settings</string>
+    <string name="widget_no_space">No room on this home screen</string>
+    <string name="widget_too_large">Too large for this home screen</string>
+    <string name="widget_picker_title">Widgets</string>
+    <string name="widget_picker_search">Search</string>
+    <string name="widget_picker_add">Add</string>
+    <string name="widget_span">%1$d × %2$d</string>
+    <string name="widget_error">Widget can’t be shown</string>
+    <string name="widget_remove">Remove</string>
+    <string name="widget_settings">Widget settings</string>
+    <string name="widget_removed">Item removed</string>
+    <string name="widget_undo">Undo</string>
+    <string name="pin_widget_hint">Touch and hold to move a widget.</string>
+    <string name="pin_widget_add">Add to home screen</string>
+    <string name="pin_widget_cancel">Cancel</string>
+    <string name="pin_widget_added">‘%1$s’ added to Home Page</string>
+    <plurals name="widget_count">
+        <item quantity="one">%d widget</item>
+        <item quantity="other">%d widgets</item>
+    </plurals>
     <plurals name="layers">
         <item quantity="one">%d Layer</item>
         <item quantity="other">%d Layers</item>

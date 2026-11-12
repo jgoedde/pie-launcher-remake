@@ -1,68 +1,287 @@
 package io.github.jgoedde.pielauncher.home
 
+import android.os.SystemClock
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateIntOffsetAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
+import io.github.jgoedde.pielauncher.core.home.EditMode
+import io.github.jgoedde.pielauncher.core.home.HomeZones
+import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
+import io.github.jgoedde.pielauncher.core.home.WidgetDrag
+import io.github.jgoedde.pielauncher.core.home.WidgetLayout
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.drawer.DrawerState
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /** Home Page dimensions. Code constants by design, never configuration. */
 object HomePageLayout {
     val PieZoneHeight: Dp = 240.dp
-
-    /** The lower Widget Zone holds exactly one cell row. */
-    const val LOWER_WIDGET_ZONE_ROWS = 1
 }
+
+/** Draws one placed widget at the given size; the Home Page positions it on its cells. */
+typealias WidgetContent = @Composable (widget: LaidOutWidget, width: Dp, height: Dp) -> Unit
 
 /**
  * The Home Page, top to bottom: upper Widget Zone (remaining height), Pie Zone, lower Widget
- * Zone. Everything sits inside the mandatory system gesture insets, so touches in those strips
- * never reach the launcher. In either Widget Zone a swipe up drags the App Drawer open and a swipe
- * down calls [onSwipeDown] (the notification shade). [pieZone] carries the Pie's touch handling.
+ * Zone (two cell rows), laid out by [HomeZones]. Everything sits inside the mandatory system
+ * gesture insets, so touches in those strips never reach the launcher. In either Widget Zone a
+ * swipe up drags the App Drawer open, a swipe down calls [onSwipeDown] (the notification shade),
+ * and a long-press on empty space calls [onEmptyLongPress] with the zone and the press point in
+ * that zone. [pieZone] carries the Pie's touch handling. [widgets] are laid out on the zones
+ * by [layoutOf]. [onZonesLaidOut] receives the zone grids, so widgets can be placed from
+ * outside the Home Page.
  */
 @Composable
-fun HomePage(
+internal fun <W> HomePage(
     drawer: DrawerState,
     onSwipeDown: () -> Unit,
     pieZone: Modifier,
+    widgets: List<W>,
+    layoutOf: (List<W>, HomeZones) -> WidgetLayout,
+    widgetContent: WidgetContent,
+    onEmptyLongPress: (WidgetZoneId, Offset) -> Unit,
+    onZonesLaidOut: (HomeZones) -> Unit,
+    editor: WidgetEditor,
     modifier: Modifier = Modifier,
+    zoneOverlay: @Composable (WidgetZoneId) -> Unit = {},
+    widgetOverlay: @Composable (LaidOutWidget) -> Unit = {},
 ) {
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Vertical)),
     ) {
-        val cell = with(LocalDensity.current) { CellGrid.cellSizeFor(constraints.maxWidth.toFloat()).toDp() }
-        Column(Modifier.fillMaxSize()) {
-            WidgetZone(Modifier.weight(1f).homeSwipes(drawer, onSwipeDown))
-            PieZone(pieZone)
-            WidgetZone(Modifier.height(cell * HomePageLayout.LOWER_WIDGET_ZONE_ROWS).homeSwipes(drawer, onSwipeDown))
+        val density = LocalDensity.current
+        val pieZonePx = with(density) { HomePageLayout.PieZoneHeight.toPx() }
+        val cellGapPx = with(density) { CellGrid.CELL_GAP_DP.dp.toPx() }
+        val zones =
+            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx) {
+                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx)
+            }
+        LaunchedEffect(zones) { onZonesLaidOut(zones) }
+        val base = remember(widgets, zones) { layoutOf(widgets, zones) }
+        val origin = remember { arrayOf(Offset.Zero) }
+        SideEffect { editor.laidOut(base, zones, origin[0]) }
+        val drag = (editor.mode as? EditMode.Dragging)?.drag
+        LaunchedEffect(drag?.reorderDueAtMs) {
+            val due = drag?.reorderDueAtMs ?: return@LaunchedEffect
+            delay((due - SystemClock.uptimeMillis()).coerceAtLeast(0))
+            editor.tick()
+        }
+        // A resize redraws the widget at its new span, and its pushed neighbours, while the handle moves.
+        val resize = editor.resize
+        val layout = drag?.preview ?: resize?.preview ?: editor.shown(base)
+        Column(
+            Modifier.fillMaxSize().onGloballyPositioned {
+                origin[0] = it.positionInWindow()
+                editor.laidOut(base, zones, origin[0])
+            },
+        ) {
+            WidgetZoneId.entries.forEach { zoneId ->
+                if (zoneId == WidgetZoneId.HomeLower) PieZone(pieZone, blocked = !editor.mode.pieEnabled)
+                WidgetZone(
+                    layout = layout,
+                    zone = zoneId,
+                    drag = drag,
+                    reordering = drag != null || resize != null,
+                    widgetContent = widgetContent,
+                    widgetOverlay = widgetOverlay,
+                    modifier =
+                        Modifier
+                            .height(with(density) { zones.heightPx(zoneId).toDp() })
+                            .homeSwipes(drawer, onSwipeDown)
+                            .emptySpaceLongPress(
+                                isEmpty = { at -> layout.widgetAt(zoneId, at.x, at.y) == null },
+                                onLongPress = { at -> onEmptyLongPress(zoneId, at) },
+                            ),
+                    overlay = { zoneOverlay(zoneId) },
+                )
+            }
         }
     }
 }
 
-/** Invisible at rest; a touch-down here opens the Pie. Swipes here never open the Drawer or the shade. */
+/**
+ * Invisible at rest; a touch-down here opens the Pie. Swipes here never open the Drawer or the
+ * shade. In Edit Mode it is drawn [blocked], since it never holds widgets, and the Pie is off:
+ * the blocked area takes every touch.
+ */
 @Composable
-private fun PieZone(modifier: Modifier) {
-    Spacer(modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight))
+private fun PieZone(
+    modifier: Modifier,
+    blocked: Boolean,
+) {
+    Box(modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight)) {
+        if (blocked) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            do {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }.padding(PieZoneBlockedInset)
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .background(Color.Black.copy(alpha = 0.24f))
+                    .border(1.dp, Color.White.copy(alpha = 0.32f), MaterialTheme.shapes.extraLarge),
+            )
+        }
+    }
 }
 
-/** An area laid out on the 4-column [CellGrid]; empty until widgets arrive. */
+private val PieZoneBlockedInset = 8.dp
+
+/** Launcher3 `REORDER_ANIMATION_DURATION`: neighbours move to their temporary spots. */
+private const val REORDER_ANIMATION_MS = 150
+
+/** Launcher3 `REORDER_PREVIEW_MAGNITUDE`: how far a moved neighbour wiggles, as a share of a cell. */
+private const val REORDER_PREVIEW_MAGNITUDE = 0.12f
+
+/** Launcher3 `ReorderPreviewAnimation.PREVIEW_DURATION`: one wiggle swing. */
+private const val REORDER_PREVIEW_MS = 300
+
+/**
+ * One Widget Zone of [layout] holding its widgets on their cells. During a [drag] the dragged
+ * widget keeps its cells but is not drawn (its picture follows the finger, and its view keeps
+ * the touch); its target cells are outlined; neighbours slide to their temporary spots and wiggle.
+ * While [reordering] (a drag or a resize), neighbours slide rather than jump.
+ */
 @Composable
-private fun WidgetZone(modifier: Modifier) {
-    Box(modifier.fillMaxWidth())
+private fun WidgetZone(
+    layout: WidgetLayout,
+    zone: WidgetZoneId,
+    drag: WidgetDrag?,
+    reordering: Boolean,
+    widgetContent: WidgetContent,
+    widgetOverlay: @Composable (LaidOutWidget) -> Unit,
+    modifier: Modifier,
+    overlay: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val draggedId = drag?.dragged?.id
+    // The dragged widget stays where it was picked up, so its view and touch stay put.
+    val picked = drag?.base?.widget(draggedId ?: -1)?.takeIf { it.zone == zone }
+    val widgets = layout.inZone(zone).filter { it.id != draggedId } + listOfNotNull(picked)
+    val moved =
+        drag
+            ?.moved
+            .orEmpty()
+            .map { it.id }
+            .toSet()
+    Box(modifier.fillMaxWidth()) {
+        drag?.outline?.takeIf { it.first == zone }?.let { (_, cells) ->
+            val bounds =
+                drag.preview.grids
+                    .getValue(zone)
+                    .bounds(cells)
+            with(density) {
+                Box(
+                    Modifier
+                        .offset(bounds.left.toDp(), bounds.top.toDp())
+                        .size(bounds.width.toDp(), bounds.height.toDp())
+                        .clip(RoundedCornerShape(dimensionResource(android.R.dimen.system_app_widget_background_radius)))
+                        .background(Color.White.copy(alpha = 0.3f)),
+                )
+            }
+        }
+        widgets.forEach { widget ->
+            key(widget.id) {
+                val bounds = layout.grids.getValue(zone).bounds(widget.cells)
+                val target = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt())
+                val position by animateIntOffsetAsState(
+                    target,
+                    animationSpec = if (reordering) tween(REORDER_ANIMATION_MS) else snap(),
+                    label = "reorder",
+                )
+                val wiggle = if (widget.id in moved) wiggleTowards(drag!!.base.widget(widget.id), widget, layout) else Offset.Zero
+                with(density) {
+                    val width = bounds.width.toDp()
+                    val height = bounds.height.toDp()
+                    Box(
+                        Modifier
+                            .offset { position + IntOffset(wiggle.x.roundToInt(), wiggle.y.roundToInt()) }
+                            .size(width, height)
+                            .graphicsLayer { alpha = if (widget.id == draggedId) 0f else 1f },
+                    ) {
+                        widgetContent(widget, width, height)
+                        widgetOverlay(widget)
+                    }
+                }
+            }
+        }
+        overlay()
+    }
+}
+
+/**
+ * The wiggle of a neighbour the reorder moved to [now] from [was] (Launcher3
+ * `ReorderPreviewAnimation`, preview mode): it swings back and forth by
+ * [REORDER_PREVIEW_MAGNITUDE] of a cell toward where it was.
+ */
+@Composable
+private fun wiggleTowards(
+    was: LaidOutWidget?,
+    now: LaidOutWidget,
+    layout: WidgetLayout,
+): Offset {
+    val grid = layout.grids.getValue(now.zone)
+    val from = was?.takeIf { it.zone == now.zone }?.let { grid.bounds(it.cells) } ?: return Offset.Zero
+    val to = grid.bounds(now.cells)
+    val direction = Offset(from.left - to.left, from.top - to.top)
+    val length = direction.getDistance()
+    if (length == 0f) return Offset.Zero
+    val swing by rememberInfiniteTransition(label = "wiggle").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(REORDER_PREVIEW_MS), RepeatMode.Reverse),
+        label = "wiggle",
+    )
+    return direction / length * (REORDER_PREVIEW_MAGNITUDE * grid.cellWidth * swing)
 }

@@ -28,6 +28,18 @@ https://android.googlesource.com/platform/packages/apps/Launcher3/+/refs/heads/a
   - ShapesProvider (Icon Shape list and SVG paths):
     core/src/main/kotlin/io/github/jgoedde/pielauncher/core/icons/IconShapes.kt
 
+The Android Open Source Project, Apache License 2.0
+Copyright (C) 2008, 2023 The Android Open Source Project
+https://android.googlesource.com/platform/packages/apps/Launcher3/+/refs/heads/android16-qpr2-release/src/com/android/launcher3/
+  - CellLayout and celllayout/ReorderAlgorithm (widget reorder rules):
+    core/src/main/kotlin/io/github/jgoedde/pielauncher/core/home/WidgetLayout.kt
+
+The Android Open Source Project, Apache License 2.0
+Copyright (C) 2021 The Android Open Source Project
+https://android.googlesource.com/platform/packages/apps/Launcher3/+/refs/heads/android16-qpr2-release/src/com/android/launcher3/widget/
+  - RoundedCornerEnforcement (widget background and rounded corners):
+    core/src/main/kotlin/io/github/jgoedde/pielauncher/core/home/WidgetBackground.kt
+
 Bundled assets
 --------------
 
