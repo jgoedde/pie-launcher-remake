@@ -48,9 +48,9 @@ class WidgetLayoutTest {
 
     @Test
     fun `a default span taller than a zone is cut to the zone's rows when the min span allows`() {
-        val added = homePage().add(2, bounds(default = CellSpan(4, 2), min = CellSpan(2, 1)), listOf(HomeLower)).changed()
+        val added = homePage().add(2, bounds(default = CellSpan(4, 3), min = CellSpan(2, 1)), listOf(HomeLower)).changed()
 
-        assertEquals(CellRect(0, 0, 4, 1), added.widget.cells)
+        assertEquals(CellRect(0, 0, 4, 2), added.widget.cells)
     }
 
     @Test
@@ -62,9 +62,9 @@ class WidgetLayoutTest {
 
     @Test
     fun `a widget that fits some zone of the Page, just not the ones tried, finds no room`() {
-        val twoRows = bounds(default = CellSpan(2, 2), min = CellSpan(2, 2))
+        val threeRows = bounds(default = CellSpan(2, 3), min = CellSpan(2, 3))
 
-        assertEquals(LayoutResult.Rejected(Rejection.NoRoom), homePage().add(2, twoRows, listOf(HomeLower)))
+        assertEquals(LayoutResult.Rejected(Rejection.NoRoom), homePage().add(2, threeRows, listOf(HomeLower)))
     }
 
     @Test
@@ -187,20 +187,20 @@ class WidgetLayoutTest {
     }
 
     @Test
-    fun `a 3x2 moved into the lower zone shrinks to 3x1 when its min height allows, else is rejected`() {
-        val layout = homePage(widget(1, HomeUpper, CellRect(0, 0, 3, 2), bounds(CellSpan(3, 2), min = CellSpan(3, 1))))
-        val rigid = homePage(widget(1, HomeUpper, CellRect(0, 0, 3, 2), bounds(CellSpan(3, 2), min = CellSpan(3, 2))))
+    fun `a 3x3 moved into the lower zone shrinks to 3x2 when its min height allows, else is rejected`() {
+        val layout = homePage(widget(1, HomeUpper, CellRect(0, 0, 3, 3), bounds(CellSpan(3, 3), min = CellSpan(3, 2))))
+        val rigid = homePage(widget(1, HomeUpper, CellRect(0, 0, 3, 3), bounds(CellSpan(3, 3), min = CellSpan(3, 3))))
 
         val shrunk = layout.drop(layout.pickUp(1)!!, DragTarget.Cell(HomeLower, 0, 0)).changed()
 
-        assertEquals(widget(1, HomeLower, CellRect(0, 0, 3, 1), bounds(CellSpan(3, 2), min = CellSpan(3, 1))), shrunk.widget)
+        assertEquals(widget(1, HomeLower, CellRect(0, 0, 3, 2), bounds(CellSpan(3, 3), min = CellSpan(3, 2))), shrunk.widget)
         assertEquals(LayoutResult.Rejected(Rejection.NoRoom), rigid.drop(rigid.pickUp(1)!!, DragTarget.Cell(HomeLower, 0, 0)))
     }
 
     @Test
     fun `reflow never pushes a widget out of its zone`() {
         // The lower zone is full and its widget can't make room within it; it is never pushed up into the upper zone.
-        val layout = homePage(widget(1, HomeLower, CellRect(0, 0, 4, 1)), widget(2, HomeUpper, CellRect(0, 0, 1, 1)))
+        val layout = homePage(widget(1, HomeLower, CellRect(0, 0, 4, 2)), widget(2, HomeUpper, CellRect(0, 0, 1, 1)))
 
         assertEquals(LayoutResult.Rejected(Rejection.NoRoom), layout.drop(layout.pickUp(2)!!, DragTarget.Cell(HomeLower, 0, 0)))
     }
@@ -309,12 +309,12 @@ class WidgetLayoutTest {
 
     @Test
     fun `a widget grows only as far as its neighbours can move`() {
-        val blocked = homePage(widget(1, HomeLower, CellRect(0, 0, 2, 1)), widget(2, HomeLower, CellRect(2, 0, 2, 1)))
-        val partly = homePage(widget(1, HomeLower, CellRect(0, 0, 2, 1)), widget(2, HomeLower, CellRect(3, 0, 1, 1)))
+        val blocked = homePage(widget(1, HomeLower, CellRect(0, 0, 2, 2)), widget(2, HomeLower, CellRect(2, 0, 2, 2)))
+        val partly = homePage(widget(1, HomeLower, CellRect(0, 0, 2, 2)), widget(2, HomeLower, CellRect(3, 0, 1, 2)))
 
         assertEquals(LayoutResult.Unchanged, blocked.resize(1, ResizeEdge.Right, 1f))
         assertEquals(
-            CellRect(0, 0, 3, 1),
+            CellRect(0, 0, 3, 2),
             partly
                 .resize(1, ResizeEdge.Right, 2f)
                 .changed()
@@ -413,9 +413,9 @@ class WidgetLayoutTest {
     }
 }
 
-/** The Home Page of a 430 x 1020 px window: 100 px cells with 10 px gaps, a 4 x 3 upper zone and a 4 x 1 lower zone. */
+/** The Home Page of a 430 x 1130 px window: 100 px cells with 10 px gaps, a 4 x 3 upper zone and a 4 x 2 lower zone. */
 internal fun homePage(vararg widgets: LaidOutWidget) =
-    WidgetLayout(HomeZones.of(widthPx = 430f, heightPx = 1020f, pieZoneHeightPx = 600f, cellGapPx = 10f).grids, widgets.toList())
+    WidgetLayout(HomeZones.of(widthPx = 430f, heightPx = 1130f, pieZoneHeightPx = 600f, cellGapPx = 10f).grids, widgets.toList())
 
 internal fun bounds(
     default: CellSpan,

@@ -89,7 +89,7 @@ data class HomeZones(
     }
 
     companion object {
-        const val LOWER_ZONE_ROWS = 1
+        const val LOWER_ZONE_ROWS = 2
 
         fun of(
             widthPx: Float,

@@ -67,7 +67,7 @@ typealias WidgetContent = @Composable (widget: LaidOutWidget, width: Dp, height:
 
 /**
  * The Home Page, top to bottom: upper Widget Zone (remaining height), Pie Zone, lower Widget
- * Zone (one cell row), laid out by [HomeZones]. Everything sits inside the mandatory system
+ * Zone (two cell rows), laid out by [HomeZones]. Everything sits inside the mandatory system
  * gesture insets, so touches in those strips never reach the launcher. In either Widget Zone a
  * swipe up drags the App Drawer open, a swipe down calls [onSwipeDown] (the notification shade),
  * and a long-press on empty space calls [onEmptyLongPress] with the zone and the press point in

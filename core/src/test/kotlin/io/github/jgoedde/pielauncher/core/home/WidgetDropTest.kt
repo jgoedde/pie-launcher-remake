@@ -51,12 +51,12 @@ class WidgetDropTest {
     }
 
     @Test
-    fun `a new widget shrunk to fit the one-row lower zone is placed at the shrunk span`() {
-        val tall = bounds(default = CellSpan(2, 2), min = CellSpan(2, 1))
+    fun `a new widget shrunk to fit the two-row lower zone is placed at the shrunk span`() {
+        val tall = bounds(default = CellSpan(2, 3), min = CellSpan(2, 1))
         val drop = dropNew(layout, tall, DragTarget.Cell(HomeLower, 0, 0))
 
         assertEquals(
-            CellRect(0, 0, 2, 1),
+            CellRect(0, 0, 2, 2),
             layout
                 .place(id = 7, tall, drop)
                 .changed()

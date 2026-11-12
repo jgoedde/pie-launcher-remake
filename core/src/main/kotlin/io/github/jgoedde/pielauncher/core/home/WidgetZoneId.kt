@@ -5,7 +5,7 @@ enum class WidgetZoneId {
     /** The Home Page's zone above the Pie Zone. */
     HomeUpper,
 
-    /** The Home Page's one-row zone below the Pie Zone. */
+    /** The Home Page's two-row zone below the Pie Zone. */
     HomeLower,
     ;
 

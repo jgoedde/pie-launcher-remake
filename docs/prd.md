@@ -48,7 +48,7 @@ Sources: [How does widget editing work in the Widget Zones?](https://github.com/
 
 All values are code constants, never configuration.
 
-- Top to bottom: **upper Widget Zone** (takes the remaining height), **Pie Zone** (~240 dp tall, full width), **lower Widget Zone** (exactly one cell row).
+- Top to bottom: **upper Widget Zone** (takes the remaining height), **Pie Zone** (~240 dp tall, full width), **lower Widget Zone** (exactly two cell rows).
 - Everything sits above `WindowInsets.mandatorySystemGestures`. Touches in that bottom strip never reach the launcher.
 - The lower Widget Zone is also where a swipe-up for the App Drawer typically starts.
 - The Pie Zone is invisible at rest. In Edit Mode it is drawn as a blocked area.
@@ -245,7 +245,7 @@ Reflow follows Launcher3 `ReorderAlgorithm` ([ADR 0007](adr/0007-widget-reflow.m
 
 - **Move.** A dragged widget snaps to cells, and its target cells are previewed. It may cross the Pie Zone into the other Widget Zone. Dwelling ~500 ms at the left or right edge changes the Page (creating a new Page at the right end, 3.1).
 - **Reflow.** After the finger rests 650 ms, the reorder preview is computed in this order: push neighbours aside; else the closest empty space without moving anything; else drop in place; else shrink the dragged widget one cell at a time (X, then Y) down to its min span. Moving neighbours animate (150 ms) and wiggle (12 %) in their temporary spots. The drop commits the preview shown.
-- Reflow stays within the target Widget Zone. Nothing is pushed into or across the Pie Zone. A widget moved into the one-row lower Widget Zone shrinks to fit when its min span allows.
+- Reflow stays within the target Widget Zone. Nothing is pushed into or across the Pie Zone. A widget moved into the two-row lower Widget Zone shrinks to fit when its min span allows.
 - A drop on the Pie Zone, or where nothing fits even at min span, is rejected: "No room on this home screen", and the widget springs back.
 - A widget that shrank on drop gets its new size (7.1).
 - **Drop-target bar** at the top while dragging: "Remove", plus "Widget settings" when reconfigurable.
