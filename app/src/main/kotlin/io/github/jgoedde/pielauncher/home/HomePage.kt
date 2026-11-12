@@ -247,15 +247,7 @@ private fun PieZone(
     pieOpen: Boolean,
 ) {
     Box(modifier.fillMaxWidth().height(HomePageLayout.PieZoneHeight)) {
-        if (!blocked) {
-            val alpha by animateFloatAsState(if (pieOpen) 0f else 1f, tween(PIE_ZONE_DOTS_FADE_MS), label = "pieZoneDots")
-            Canvas(Modifier.fillMaxSize().padding(PieZoneInset).graphicsLayer { this.alpha = alpha }) {
-                val radius = PieZoneDotRadius.toPx()
-                DotGrid.centres(size.width, size.height, PieZoneDotStep.toPx()).forEach { (x, y) ->
-                    drawCircle(PieZoneDotColor, radius, Offset(x, y))
-                }
-            }
-        } else {
+        if (blocked) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -271,6 +263,14 @@ private fun PieZone(
                     .background(Color.Black.copy(alpha = 0.24f))
                     .border(1.dp, Color.White.copy(alpha = 0.32f), MaterialTheme.shapes.extraLarge),
             )
+        } else {
+            val alpha by animateFloatAsState(if (pieOpen) 0f else 1f, tween(PIE_ZONE_DOTS_FADE_MS), label = "pieZoneDots")
+            Canvas(Modifier.fillMaxSize().padding(PieZoneInset).graphicsLayer { this.alpha = alpha }) {
+                val radius = PieZoneDotRadius.toPx()
+                DotGrid.centres(size.width, size.height, PieZoneDotStep.toPx()).forEach { (x, y) ->
+                    drawCircle(PieZoneDotColor, radius, Offset(x, y))
+                }
+            }
         }
     }
 }
