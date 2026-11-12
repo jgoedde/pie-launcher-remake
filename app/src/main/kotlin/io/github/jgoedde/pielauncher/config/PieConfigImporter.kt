@@ -7,11 +7,13 @@ import android.net.Uri
 import android.os.Process
 import android.util.Log
 import dev.zacsweers.metro.Inject
+import io.github.jgoedde.pielauncher.BuildConfig
 import io.github.jgoedde.pielauncher.core.Clock
 import io.github.jgoedde.pielauncher.core.config.ConfigError
 import io.github.jgoedde.pielauncher.core.config.DeviceTargets
 import io.github.jgoedde.pielauncher.core.config.LaunchableApp
 import io.github.jgoedde.pielauncher.core.config.PieConfigImport
+import io.github.jgoedde.pielauncher.core.config.PieConfigSchema
 import io.github.jgoedde.pielauncher.core.config.ShortcutTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +42,7 @@ class PieConfigImporter(
                     Log.w(TAG, "Cannot read $uri", e)
                     return@withContext PieConfigImport.Rejected(listOf(ConfigError("$", "cannot read the file: ${e.message}")))
                 }
-            PieConfigImport.check(text, deviceTargets())
+            PieConfigImport.check(text, deviceTargets(), PieConfigSchema.url(BuildConfig.VERSION_TAG))
         }
 
     /** False when the file cannot be written; the previous Pie Config then stays active. */

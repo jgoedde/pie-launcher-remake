@@ -351,7 +351,7 @@ Layer Switch icons need the Material Symbols Rounded names at runtime, both to v
 Single files written via SAF (`CreateDocument`), no ZIP.
 
 - **Inventory:** `{ exportedAt, apps: [{package, activity, label, default}], shortcuts: [{package, shortcutId, label, kind: pinned|manifest|dynamic, disabled?}] }`, each list sorted by label. `default` marks the activity an app item without `activity` launches. Example: [`spec/inventory.example.json`](../spec/inventory.example.json).
-- **Current config:** a byte copy of the stored, normalized Pie Config file.
+- **Current config:** a byte copy of the stored, normalized Pie Config file. Import and the Default Config write `$schema` into that file, pointing at `spec/pie-config.schema.json` at the release tag the app was built from (`main` for untagged builds), so an IDE offers autocomplete for the exported file.
 
 ### 9.6 Default Config
 

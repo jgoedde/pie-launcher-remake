@@ -8,11 +8,13 @@ import android.util.Log
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.BuildConfig
 import io.github.jgoedde.pielauncher.core.config.DefaultConfig
 import io.github.jgoedde.pielauncher.core.config.LaunchableApp
 import io.github.jgoedde.pielauncher.core.config.PieConfig
 import io.github.jgoedde.pielauncher.core.config.PieConfigCodec
 import io.github.jgoedde.pielauncher.core.config.PieConfigDecoding
+import io.github.jgoedde.pielauncher.core.config.PieConfigSchema
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -142,7 +144,7 @@ class PieConfigStore(
         val collator = Collator.getInstance()
         val config = DefaultConfig.build(defaultApps.packages(), launchable) { a, b -> collator.compare(a, b) }
         if (config == null) Log.w(TAG, "No launchable apps yet; the Default Config is generated on a later start")
-        return config
+        return config?.copy(schema = PieConfigSchema.url(BuildConfig.VERSION_TAG))
     }
 
     /** Atomic: on failure the previous file stays. */
