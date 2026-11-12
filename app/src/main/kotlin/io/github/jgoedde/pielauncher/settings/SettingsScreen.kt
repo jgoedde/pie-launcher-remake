@@ -144,14 +144,16 @@ fun SettingsScaffold(
 @Composable
 private fun statusText(status: ConfigStatus?): String {
     val record = status?.record
+    val layerCount = status?.layerCount
     return when {
         status == null -> stringResource(R.string.settings_status_loading)
+        layerCount == null -> stringResource(R.string.settings_status_broken)
         record == null -> stringResource(R.string.settings_status_default)
         else ->
             stringResource(
                 R.string.settings_status_imported,
                 DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(record.importedAtMillis)),
-                pluralStringResource(R.plurals.layers, status.layerCount, status.layerCount),
+                pluralStringResource(R.plurals.layers, layerCount, layerCount),
                 pluralStringResource(R.plurals.warnings, record.warnings.size, record.warnings.size),
             )
     }

@@ -33,14 +33,14 @@ fun ImportDialogHost(
 ) {
     when (dialog) {
         null -> Unit
-        ImportDialog.Checking ->
+        ImportDialog.Checking, ImportDialog.Applying ->
             AlertDialog(
                 onDismissRequest = {},
                 confirmButton = {},
                 text = {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         LoadingIndicator()
-                        Text(stringResource(R.string.import_checking))
+                        Text(stringResource(if (dialog == ImportDialog.Applying) R.string.import_applying else R.string.import_checking))
                     }
                 },
             )

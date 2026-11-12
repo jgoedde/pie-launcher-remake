@@ -35,6 +35,7 @@ class SettingsActivity : ComponentActivity() {
             initializer {
                 SettingsViewModel(
                     config = graph.pieConfigStore.config,
+                    loaded = graph.pieConfigStore.loaded,
                     record = graph.importRecordStore.record,
                     apps = graph.appsRepository.apps,
                     resolver = graph.pieItemResolver,

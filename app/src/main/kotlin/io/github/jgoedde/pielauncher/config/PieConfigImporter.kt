@@ -35,11 +35,9 @@ class PieConfigImporter(
             val text =
                 try {
                     read(uri)
-                } catch (e: IOException) {
+                } catch (e: Exception) {
+                    if (e !is IOException && e !is SecurityException) throw e
                     Log.w(TAG, "Cannot read $uri", e)
-                    return@withContext PieConfigImport.Rejected(listOf(ConfigError("$", "cannot read the file: ${e.message}")))
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "No access to $uri", e)
                     return@withContext PieConfigImport.Rejected(listOf(ConfigError("$", "cannot read the file: ${e.message}")))
                 }
             PieConfigImport.check(text, deviceTargets())

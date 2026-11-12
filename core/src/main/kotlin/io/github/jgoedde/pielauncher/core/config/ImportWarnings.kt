@@ -64,7 +64,7 @@ internal class ImportWarnings(
                         "activity ${item.packageName}/${item.activity} is not a launcher activity"
                             .takeUnless { item.packageName to item.activity in launcherActivities }
                     else ->
-                        "app ${item.packageName} is not installed or has no launcher activity"
+                        "app ${item.packageName} is not installed or does not start a launcher activity"
                             .takeUnless { item.packageName to targets.defaultActivities[item.packageName] in launcherActivities }
                 }
             is PieItem.Shortcut ->

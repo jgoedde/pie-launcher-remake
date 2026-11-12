@@ -22,9 +22,12 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** The Pie Config category's status row: [record] is null while the Default Config was never replaced. */
+/**
+ * The Pie Config category's status row: [record] is null while the Default Config was never
+ * replaced; [layerCount] is null while the stored file cannot be decoded.
+ */
 data class ConfigStatus(
-    val layerCount: Int,
+    val layerCount: Int?,
     val record: ImportRecord?,
 )
 
@@ -39,6 +42,8 @@ data class UnavailableItem(
 sealed interface ImportDialog {
     data object Checking : ImportDialog
 
+    data object Applying : ImportDialog
+
     data class Review(
         val accepted: PieConfigImport.Accepted,
     ) : ImportDialog
@@ -52,6 +57,7 @@ sealed interface ImportDialog {
 
 class SettingsViewModel(
     config: StateFlow<PieConfig?>,
+    loaded: StateFlow<Boolean>,
     record: Flow<ImportRecord?>,
     apps: StateFlow<List<LauncherApp>>,
     resolver: PieItemResolver,
@@ -59,8 +65,9 @@ class SettingsViewModel(
 ) : ViewModel() {
     /** Null until the Pie Config is decoded. */
     val status: StateFlow<ConfigStatus?> =
-        combine(config, record) { config, record -> config?.let { ConfigStatus(it.layers.size, record) } }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(config, record, loaded) { config, record, loaded ->
+            if (config == null && !loaded) null else ConfigStatus(config?.layers?.size, record)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val unavailable: StateFlow<List<UnavailableItem>> =
         combine(config, apps) { config, apps ->
@@ -91,7 +98,7 @@ class SettingsViewModel(
 
     fun apply() {
         val review = dialog.value as? ImportDialog.Review ?: return
-        dialog.value = ImportDialog.Checking
+        dialog.value = ImportDialog.Applying
         viewModelScope.launch {
             dialog.value = if (importer.apply(review.accepted)) null else ImportDialog.ApplyFailed
         }

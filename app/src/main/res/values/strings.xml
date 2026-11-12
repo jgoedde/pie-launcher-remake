@@ -20,6 +20,7 @@
     <string name="settings_status_default">Default Config</string>
     <string name="settings_status_imported">Imported %1$s · %2$s · %3$s</string>
     <string name="settings_status_loading">Loading…</string>
+    <string name="settings_status_broken">The stored Pie Config cannot be read; import a new one</string>
     <string name="settings_status_title">Pie Config status</string>
     <string name="settings_status_last_import">Warnings of the last import</string>
     <string name="settings_status_no_warnings">The last import had no warnings.</string>
@@ -36,6 +37,7 @@
     <string name="settings_version">%1$s (%2$d)</string>
     <string name="settings_back">Back</string>
     <string name="import_checking">Checking file…</string>
+    <string name="import_applying">Applying…</string>
     <string name="import_review_title">Import Pie Config?</string>
     <string name="import_summary">%1$s, %2$s · %3$s</string>
     <string name="import_apply">Apply</string>

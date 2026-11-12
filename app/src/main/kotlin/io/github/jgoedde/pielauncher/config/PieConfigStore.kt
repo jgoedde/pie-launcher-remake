@@ -46,11 +46,21 @@ class PieConfigStore(
     /** Null until the file is decoded, and while it cannot be. */
     val config: StateFlow<PieConfig?> = current.asStateFlow()
 
+    private val done = MutableStateFlow(false)
+
+    /** True once the first load finished; [config] still null then means the file is broken. */
+    val loaded: StateFlow<Boolean> = done.asStateFlow()
+
     /** Keeps an import from racing the first load. */
     private val lock = Mutex()
 
     init {
-        appScope.launch(Dispatchers.IO) { lock.withLock { current.value = load() } }
+        appScope.launch(Dispatchers.IO) {
+            lock.withLock {
+                current.value = load()
+                done.value = true
+            }
+        }
     }
 
     /**
@@ -62,7 +72,14 @@ class PieConfigStore(
         normalized: String,
     ): Boolean =
         withContext(Dispatchers.IO) {
-            lock.withLock { write(normalized).also { if (it) current.value = config } }
+            lock.withLock {
+                write(normalized).also {
+                    if (it) {
+                        current.value = config
+                        done.value = true
+                    }
+                }
+            }
         }
 
     private fun load(): PieConfig? {

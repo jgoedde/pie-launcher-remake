@@ -78,7 +78,7 @@ class PieConfigImportTest {
 
         assertEquals(
             listOf(
-                ConfigWarning("$.layers[0].items[0]", "app org.example.gone is not installed or has no launcher activity"),
+                ConfigWarning("$.layers[0].items[0]", "app org.example.gone is not installed or does not start a launcher activity"),
                 ConfigWarning("$.layers[0].items[1]", "activity com.android.dialer/com.android.dialer.Gone is not a launcher activity"),
                 ConfigWarning("$.layers[0].items[2]", "Shortcut \"gone\" of org.mozilla.firefox not found"),
             ),
