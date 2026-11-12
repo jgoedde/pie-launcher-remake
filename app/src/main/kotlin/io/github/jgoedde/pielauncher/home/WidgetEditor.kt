@@ -120,6 +120,9 @@ internal class WidgetEditor(
     /** The Page a picked-up widget came from. */
     private var dragOrigin = HOME_PAGE
 
+    /** The last Page the drag made at the right end, nothing stored on it yet. */
+    private var madePage: Int? = null
+
     private var dwell by mutableStateOf(EdgeDwell.None)
     private var lastFinger: Offset? = null
 
@@ -148,9 +151,14 @@ internal class WidgetEditor(
         this.edgePx = edgePx
     }
 
+    /** Counts Home presses, so each one scrolls the pager to the Home Page, even mid-swipe. */
+    var homePresses by mutableStateOf(0)
+        private set
+
     /** Home pressed: the Home Page shows (the pager scrolls there when another Page is shown). */
     fun showHomePage() {
         page = HOME_PAGE
+        homePresses++
     }
 
     /** The pager settled on [page]; a drag drives the Page itself. */
@@ -333,11 +341,15 @@ internal class WidgetEditor(
         val now = clock()
         mode = mode.tick(now)
         val drag = (mode as? EditMode.Dragging)?.drag ?: return
-        val canAppend = shown(page).widgets.any { it.id != drag.dragged.id }
+        // A new Page only when this one keeps something; the Home Page always stays.
+        val canAppend = page == HOME_PAGE || shown(page).widgets.any { it.id != drag.dragged.id }
         val turn = dwell.turn(now, page, layouts.pages.size, canAppend) ?: return
         page = turn.page
         dwell = turn.dwell
-        if (page >= layouts.pages.size) minPages = page + 1
+        if (page >= layouts.pages.size) {
+            minPages = page + 1
+            madePage = page
+        }
         // The drag goes on over the new Page, from where the finger is.
         mode = mode.startDrag(WidgetDrag.start(shown(page), drag.dragged, now))
         lastFinger?.let(::dragTo)
@@ -378,7 +390,7 @@ internal class WidgetEditor(
         endDrag()
         return when (val result = release.result) {
             // A Page the drag made stays until the add is over; Pages made past it go.
-            is LayoutResult.Changed -> WidgetDrop.of(page, result).also { minPages = page + 1 }
+            is LayoutResult.Changed -> WidgetDrop.of(page, result).also { minPages = keptPagesAfterDrop() }
             is LayoutResult.Rejected ->
                 null.also {
                     minPages = 1
@@ -413,9 +425,16 @@ internal class WidgetEditor(
         lastFinger = null
     }
 
+    /**
+     * The Pages to keep showing after a drop on [page]: a Page the drag made and dropped on stays
+     * until the rows hold it; any other Page made by the drag goes.
+     */
+    private fun keptPagesAfterDrop(): Int = if (page == madePage) page + 1 else 1
+
     /** An edit starts: the Pages are as stored, with no Page made by an earlier drag. */
     private fun startPages() {
         minPages = 1
+        madePage = null
         dwell = EdgeDwell.None
     }
 
@@ -488,8 +507,7 @@ internal class WidgetEditor(
             val release = mode.release()
             mode = release.mode
             if (release.result is LayoutResult.Changed) {
-                // A Page the drag made and dropped on stays until the rows hold it; Pages made past it go.
-                minPages = page + 1
+                minPages = keptPagesAfterDrop()
             } else {
                 // Sprung back: the widget's own Page shows again.
                 page = dragOrigin

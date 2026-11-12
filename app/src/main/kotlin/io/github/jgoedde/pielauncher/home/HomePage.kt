@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.core.home.EditMode
+import io.github.jgoedde.pielauncher.core.home.HOME_PAGE
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.PageLayouts
@@ -137,6 +138,7 @@ internal fun <W> HomePages(
         }
         val pager = rememberPagerState { pageCount }
         LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect(editor::pageSettled) }
+        LaunchedEffect(editor.homePresses) { if (editor.homePresses > 0) pager.animateScrollToPage(HOME_PAGE) }
         LaunchedEffect(editor.page, pageCount) {
             val target = editor.page
             if (target < pageCount && pager.currentPage != target) pager.animateScrollToPage(target)
