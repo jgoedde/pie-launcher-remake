@@ -215,6 +215,11 @@ class HomeActivity : ComponentActivity() {
                                 when (payload) {
                                     is WidgetDragPayload.Provider ->
                                         addWidget.launch(AddWidgetRequest(payload.provider, payload.profile, listOf(drop.zone), drop))
+                                    is WidgetDragPayload.Pin ->
+                                        WidgetDragHandOff.pins.take(payload.token)?.let { pin ->
+                                            val info = pin.getAppWidgetProviderInfo(this@HomeActivity) ?: return@let
+                                            addWidget.launch(AddWidgetRequest(info.provider, info.profile, listOf(drop.zone), drop, pin))
+                                        }
                                 }
                             }
                         }
@@ -475,7 +480,7 @@ private const val TAG = "HomeActivity"
 
 /**
  * Home's end of the widget drag hand-off (#34 "Home drag target"): a widget dragged in from the
- * Widget Picker (and, from #62, the pin sheet) becomes the Edit Mode move of a new widget, with
+ * Widget Picker or the pin sheet becomes the Edit Mode move of a new widget, with
  * the same reflow. Dropped on the Widget Zones, it goes to [add] with where it landed.
  */
 private class WidgetDropTarget(

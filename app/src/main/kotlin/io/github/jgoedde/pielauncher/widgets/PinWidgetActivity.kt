@@ -1,23 +1,30 @@
 package io.github.jgoedde.pielauncher.widgets
 
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -28,22 +35,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
-import io.github.jgoedde.pielauncher.core.home.CellSpan
+import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.PinAdd
+import io.github.jgoedde.pielauncher.core.home.PinSheet
+import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
-import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
+import io.github.jgoedde.pielauncher.core.home.WidgetSpans
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
- * App-initiated widget pinning (`requestPinAppWidget`, PRD 7.6). A sheet shows the widget's name
- * and size; Add binds it, accepts the request and places it at the first free spot on the Home
- * Page, upper Widget Zone first. With no free spot the sheet says "No space" and offers no Add.
+ * App-initiated widget pinning (`requestPinAppWidget`, PRD 7.6, Launcher3 `AddItemActivity`): a
+ * sheet titled with the app's name and the hint "Touch and hold to move a widget.", the widget's
+ * preview card (an app-supplied preview wins), "Cancel" and "Add to home screen".
+ *
+ * "Add to home screen" binds the widget (the system bind dialog when not allow-listed; a
+ * cancelled bind keeps the sheet), places it at the first free spot of the Home Page, upper
+ * Widget Zone first, and accepts the request with the size options and the widget id. It is
+ * disabled with the reason when the widget has no room or is too large, both known before the
+ * sheet shows. Touch and hold on the preview drags the widget onto Home instead, which binds,
+ * places and accepts it on drop. The launcher never configures a pinned widget.
  */
 class PinWidgetActivity : ComponentActivity() {
     private val graph by lazy { (application as PieLauncherApplication).graph }
@@ -52,16 +71,19 @@ class PinWidgetActivity : ComponentActivity() {
     private var request: LauncherApps.PinItemRequest? = null
     private var pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
 
-    /** The sheet's content once the free spot is known; a null span means "No space". */
-    private var sheet by mutableStateOf<PinSheet?>(null)
+    /** The sheet's content once spans and the spot are known. */
+    private var sheet by mutableStateOf<PinSheetContent?>(null)
+    private var preview by mutableStateOf<PreviewContent?>(null)
 
     private val bind =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) accept() else cancel()
+            if (result.resultCode == RESULT_OK) {
+                accept()
+            } else {
+                // Launcher3: the id goes, the sheet stays.
+                deletePending()
+            }
         }
-
-    /** Upper Widget Zone first. */
-    private val targets = listOf(WidgetZoneId.HomeUpper, WidgetZoneId.HomeLower)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,15 +93,39 @@ class PinWidgetActivity : ComponentActivity() {
         request = pin
         pendingId = savedInstanceState?.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
+        val grid = graph.homeGeometry.catalogGrid(this)
         lifecycleScope.launch {
-            val spot = widgets.findSpot(info, targets, graph.homeGeometry.zones(this@PinWidgetActivity))
-            sheet = PinSheet(info.loadLabel(packageManager), (spot as? LayoutResult.Changed)?.widget?.cells?.span)
+            val spot = widgets.findSpot(info, PinSheet.TARGETS, graph.homeGeometry.zones(this@PinWidgetActivity))
+            sheet = load(info, grid, PinSheet.add(spot))
+        }
+        lifecycleScope.launch {
+            val spans = widgets.spans(info, grid)
+            val widthPx = (WidgetCatalog.sizeList(spans.default, grid).first().width * resources.displayMetrics.density).roundToInt()
+            val appSupplied = pin.extras?.getParcelable(AppWidgetManager.EXTRA_APPWIDGET_PREVIEW, RemoteViews::class.java)
+            preview = loadWidgetPreview(this@PinWidgetActivity, widgets, info, widthPx, appSupplied)
         }
         setContent {
             PieLauncherTheme {
-                sheet?.let { PinWidgetSheet(it, onAdd = ::add, onDismiss = ::cancel) }
+                sheet?.let { PinWidgetSheet(it, preview, onAdd = ::add, onPickUp = ::pickUp, onDismiss = ::cancel) }
             }
         }
+    }
+
+    private fun load(
+        info: AppWidgetProviderInfo,
+        grid: CatalogGrid,
+        add: PinAdd,
+    ): PinSheetContent {
+        val pkg = info.provider.packageName
+        val appName = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+        return PinSheetContent(
+            appName = appName.getOrDefault(pkg),
+            label = info.loadLabel(packageManager),
+            description = info.loadDescription(this)?.toString().orEmpty(),
+            spans = widgets.spans(info, grid),
+            grid = grid,
+            add = add,
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -89,20 +135,24 @@ class PinWidgetActivity : ComponentActivity() {
 
     private fun add() {
         val info = request?.getAppWidgetProviderInfo(this) ?: return cancel()
+        val options = bindOptions() ?: return
         pendingId = widgets.allocateId()
-        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider, bindOptions())) return accept()
+        if (widgets.bindIfAllowed(pendingId, info.profile, info.provider, options)) return accept()
         bind.launch(
             Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingId)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, bindOptions()),
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options),
         )
     }
 
-    /** The widget's size at the spot the sheet found, so it lays out right from its first update. */
-    private fun bindOptions(): Bundle? =
-        sheet?.span?.let { span -> sizeOptions(WidgetCatalog.sizeList(span, graph.homeGeometry.catalogGrid(this))) }
+    /** The widget's size at the spot the sheet found, so it lays out right from its first update; null when Add is disabled. */
+    private fun bindOptions(): Bundle? {
+        val content = sheet ?: return null
+        val ready = content.add as? PinAdd.Ready ?: return null
+        return sizeOptions(WidgetCatalog.sizeList(ready.span, content.grid))
+    }
 
     /**
      * Places the bound widget first and accepts the request only once it has a spot, so the
@@ -113,13 +163,17 @@ class PinWidgetActivity : ComponentActivity() {
         val id = pendingId
         val label = sheet?.label
         lifecycleScope.launch {
-            if (widgets.place(id, targets, graph.homeGeometry.zones(this@PinWidgetActivity)) !is LayoutResult.Changed) {
+            val placed = widgets.place(id, PinSheet.TARGETS, graph.homeGeometry.zones(this@PinWidgetActivity))
+            if (placed !is LayoutResult.Changed) {
                 Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
                 return@launch cancel()
             }
+            val options =
+                sizeOptions(WidgetCatalog.sizeList(placed.widget.cells.span, graph.homeGeometry.catalogGrid(this@PinWidgetActivity)))
+            options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
             val accepted =
                 try {
-                    pin.isValid && pin.accept(bundleOf(AppWidgetManager.EXTRA_APPWIDGET_ID to id))
+                    pin.isValid && pin.accept(options)
                 } catch (e: IllegalStateException) {
                     Log.w(TAG, "Cannot accept widget Pin Request", e)
                     false
@@ -134,15 +188,41 @@ class PinWidgetActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Touch and hold on the preview: a system drag of the widget starts from [view], drawn as
+     * [shadow], Home comes to the front and the sheet closes. The request waits in
+     * [WidgetDragHandOff.pins] for Home's drop, which binds, places and accepts it.
+     */
+    private fun pickUp(
+        view: View,
+        shadow: Bitmap,
+    ) {
+        val pin = request ?: return
+        val spans = sheet?.spans ?: return
+        val bounds = SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
+        val token = WidgetDragHandOff.pins.hold(pin)
+        if (!WidgetDragHandOff.start(view, WidgetDragPayload.Pin(token), bounds, shadow)) return WidgetDragHandOff.pins.release(token)
+        // The sheet sits over the requesting app: Home must come up to take the drop (Launcher3 does the same).
+        startActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        finish()
+    }
+
     /** Destroyed mid-flow (e.g. by Home) without Add finishing: the bound id must not leak. */
     override fun onDestroy() {
-        if (isFinishing && pendingId != AppWidgetManager.INVALID_APPWIDGET_ID) widgets.deleteId(pendingId)
+        if (isFinishing) deletePending()
         super.onDestroy()
     }
 
-    private fun cancel() {
+    private fun deletePending() {
         if (pendingId != AppWidgetManager.INVALID_APPWIDGET_ID) widgets.deleteId(pendingId)
         pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
+    }
+
+    /** Declining leaves nothing behind (the requesting app hears nothing). */
+    private fun cancel() {
+        deletePending()
         finish()
     }
 
@@ -152,44 +232,81 @@ class PinWidgetActivity : ComponentActivity() {
     }
 }
 
-private class PinSheet(
-    val label: CharSequence,
-    val span: CellSpan?,
+private class PinSheetContent(
+    val appName: String,
+    val label: String,
+    val description: String,
+    val spans: WidgetSpans,
+    val grid: CatalogGrid,
+    val add: PinAdd,
 )
 
+/** Launcher3's pin sheet: title, hint, the preview card in a 24 dp container, then Cancel and Add, end-aligned. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PinWidgetSheet(
-    sheet: PinSheet,
+    sheet: PinSheetContent,
+    preview: PreviewContent?,
     onAdd: () -> Unit,
+    onPickUp: (View, Bitmap) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val disabled = (sheet.add as? PinAdd.Disabled)?.reason
+    val tooLarge = disabled == Rejection.TooLarge
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.pin_widget_title), style = MaterialTheme.typography.titleLarge)
-            Text(sheet.label.toString(), style = MaterialTheme.typography.bodyLarge)
-            val span = sheet.span
             Text(
-                if (span != null) {
-                    stringResource(R.string.pin_widget_size, span.width, span.height)
-                } else {
-                    stringResource(R.string.widget_no_space)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (span != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                sheet.appName,
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                stringResource(R.string.pin_widget_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                val pickUp = rememberPreviewPickUp(sheet, enabled = !tooLarge, onPickUp)
+                WidgetTile(
+                    label = sheet.label,
+                    span = sheet.spans.default,
+                    description = sheet.description,
+                    tooLarge = tooLarge,
+                    showAdd = false,
+                    onTap = {},
+                    onAdd = {},
+                    preview = { Box(pickUp.recording) { WidgetPreview(preview, sheet.spans.default, sheet.grid) } },
+                    previewModifier = pickUp.touch,
+                )
+            }
+            if (disabled == Rejection.NoRoom) {
+                Text(
+                    stringResource(R.string.widget_no_space),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             Row(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
+                Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.pin_widget_cancel)) }
-                Button(onClick = onAdd, enabled = span != null) { Text(stringResource(R.string.pin_widget_add)) }
+                Button(onClick = onAdd, enabled = disabled == null) { Text(stringResource(R.string.pin_widget_add)) }
             }
         }
     }

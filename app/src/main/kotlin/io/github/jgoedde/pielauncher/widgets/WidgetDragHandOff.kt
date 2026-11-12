@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Point
@@ -11,18 +12,26 @@ import android.os.PersistableBundle
 import android.os.UserHandle
 import android.view.DragEvent
 import android.view.View
+import io.github.jgoedde.pielauncher.core.home.PinHandOff
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
 
 /**
  * What a widget drag onto Home carries (ADR 0006): the system drag-and-drop hand-off from the
- * Widget Picker (and, from #62, the pin sheet) to Home. #62 adds a `Pin` case carrying the
- * `PinItemRequest`; Home then accepts the request on drop instead of binding a provider.
+ * Widget Picker and the pin sheet to Home.
  */
 sealed interface WidgetDragPayload {
     /** A provider from the Widget Picker: Home binds and configures it on drop. */
     data class Provider(
         val provider: ComponentName,
         val profile: UserHandle,
+    ) : WidgetDragPayload
+
+    /**
+     * A widget Pin Request from the pin sheet, held in [WidgetDragHandOff.pins] under [token]:
+     * Home takes it on drop, binds the widget and accepts the request, without configure.
+     */
+    data class Pin(
+        val token: Long,
     ) : WidgetDragPayload
 }
 
@@ -39,6 +48,14 @@ object WidgetDragHandOff {
     private const val EXTRA_BOUNDS = "span_bounds"
     private const val EXTRA_PROVIDER = "provider"
     private const val EXTRA_PROFILE = "profile"
+    private const val EXTRA_PIN_TOKEN = "pin_token"
+
+    /**
+     * Pin Requests on their way from the pin sheet to Home. The drag carries only a token: a
+     * global drag's ClipData is visible to other apps' windows, and the request itself would let
+     * them accept it. The pin sheet and Home share this process, so the drop takes it from here.
+     */
+    val pins = PinHandOff<LauncherApps.PinItemRequest>()
 
     /**
      * Starts dragging a widget with [bounds] from [view], drawn as [shadow] held at its centre.
@@ -58,6 +75,7 @@ object WidgetDragHandOff {
             when (payload) {
                 is WidgetDragPayload.Provider ->
                     Intent().putExtra(EXTRA_PROVIDER, payload.provider).putExtra(EXTRA_PROFILE, payload.profile)
+                is WidgetDragPayload.Pin -> Intent().putExtra(EXTRA_PIN_TOKEN, payload.token)
             }
         return view.startDragAndDrop(ClipData(description, ClipData.Item(intent)), BitmapShadow(shadow), null, View.DRAG_FLAG_GLOBAL)
     }
@@ -74,6 +92,7 @@ object WidgetDragHandOff {
         val clip = event.clipData ?: return null
         if (!clip.description.hasMimeType(MIME_TYPE) || clip.itemCount == 0) return null
         val intent = clip.getItemAt(0).intent ?: return null
+        if (intent.hasExtra(EXTRA_PIN_TOKEN)) return WidgetDragPayload.Pin(intent.getLongExtra(EXTRA_PIN_TOKEN, 0))
         val provider = intent.getParcelableExtra(EXTRA_PROVIDER, ComponentName::class.java) ?: return null
         val profile = intent.getParcelableExtra(EXTRA_PROFILE, UserHandle::class.java) ?: return null
         return WidgetDragPayload.Provider(provider, profile)

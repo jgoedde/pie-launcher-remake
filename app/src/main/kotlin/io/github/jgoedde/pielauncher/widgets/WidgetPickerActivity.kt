@@ -18,7 +18,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,19 +38,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -374,29 +364,7 @@ private fun PickerTile(
                 .roundToPx()
         }
     val content by produceState<PreviewContent?>(null, widget.info.provider) { value = preview(widget, widthPx) }
-    // The preview as drawn, for the drag shadow.
-    val picture = rememberGraphicsLayer()
-    val view = LocalView.current
-    val haptics = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-    val pickUp =
-        if (widget.spans.tooLarge) {
-            Modifier
-        } else {
-            Modifier.pointerInput(widget) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        scope.launch {
-                            // A software copy: the shadow surface may not draw hardware bitmaps.
-                            val shadow = picture.toImageBitmap().asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
-                            onPickUp(view, widget, shadow)
-                        }
-                    },
-                    onDrag = { change, _ -> change.consume() },
-                )
-            }
-        }
+    val pickUp = rememberPreviewPickUp(widget, enabled = !widget.spans.tooLarge) { view, shadow -> onPickUp(view, widget, shadow) }
     WidgetTile(
         label = widget.label,
         span = span,
@@ -405,15 +373,8 @@ private fun PickerTile(
         showAdd = showAdd,
         onTap = { onState { it.tapTile(widget, widget.spans.tooLarge) } },
         onAdd = { onAdd(widget) },
-        preview = {
-            Box(
-                Modifier.drawWithContent {
-                    picture.record { this@drawWithContent.drawContent() }
-                    drawLayer(picture)
-                },
-            ) { WidgetPreview(content, span, grid) }
-        },
-        previewModifier = pickUp,
+        preview = { Box(pickUp.recording) { WidgetPreview(content, span, grid) } },
+        previewModifier = pickUp.touch,
     )
 }
 
