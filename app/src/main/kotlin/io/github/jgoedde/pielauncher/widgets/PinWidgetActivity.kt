@@ -59,9 +59,9 @@ import kotlin.math.roundToInt
  *
  * "Add to home screen" binds the widget (the system bind dialog when not allow-listed; a
  * cancelled bind keeps the sheet), places it at the first free spot of the Home Page, upper
- * Widget Zone first, and accepts the request with the size options and the widget id. It is
- * disabled with the reason when the widget has no room or is too large, both known before the
- * sheet shows. Touch and hold on the preview drags the widget onto Home instead, which binds,
+ * Widget Zone first, then of the other Pages, else on a new Page, and accepts the request with
+ * the size options and the widget id. It is disabled with the reason when the widget is too
+ * large, known before the sheet shows. Touch and hold on the preview drags the widget onto Home instead, which binds,
  * places and accepts it on drop. The launcher never configures a pinned widget.
  */
 class PinWidgetActivity : ComponentActivity() {
@@ -95,8 +95,8 @@ class PinWidgetActivity : ComponentActivity() {
 
         val grid = graph.homeGeometry.catalogGrid(this)
         lifecycleScope.launch {
-            val spot = widgets.findSpot(info, PinSheet.TARGETS, graph.homeGeometry.zones(this@PinWidgetActivity))
-            sheet = load(info, grid, PinSheet.add(spot))
+            val spot = widgets.findSpot(info, first = null, graph.homeGeometry.zones(this@PinWidgetActivity))
+            sheet = load(info, grid, PinSheet.add(spot.result))
         }
         lifecycleScope.launch {
             val spans = widgets.spans(info, grid)
@@ -151,7 +151,7 @@ class PinWidgetActivity : ComponentActivity() {
         val id = pendingId
         val label = sheet?.label
         lifecycleScope.launch {
-            val placed = widgets.place(id, PinSheet.TARGETS, graph.homeGeometry.zones(this@PinWidgetActivity))
+            val placed = widgets.place(id, first = null, graph.homeGeometry.zones(this@PinWidgetActivity)).result
             if (placed !is LayoutResult.Changed) {
                 Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
                 return@launch cancel()

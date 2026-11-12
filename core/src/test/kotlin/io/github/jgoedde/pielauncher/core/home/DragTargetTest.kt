@@ -48,4 +48,11 @@ class DragTargetTest {
 
         assertEquals(DragTarget.Cell(HomeUpper, 2, 0), gapped.dragTarget(250f, 50f, left = 170f, top = 0f, span = CellSpan(1, 1)))
     }
+
+    @Test
+    fun `on a non-Home Page there is no Pie Zone, the finger is always over the Page's one zone`() {
+        val target = zones.dragTarget(fingerX = 200f, fingerY = 500f, left = 100f, top = 450f, span = CellSpan(2, 1), page = 2)
+
+        assertEquals(DragTarget.Cell(WidgetZoneId.Page, 1, 5), target)
+    }
 }

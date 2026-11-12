@@ -57,10 +57,10 @@ import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.drawer.offersWidgets
 import io.github.jgoedde.pielauncher.core.home.EditMode
+import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
-import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
 import io.github.jgoedde.pielauncher.drawer.DrawerEntry
@@ -97,9 +97,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** An open empty-space menu: the long-pressed Widget Zone and the press point inside it. */
+/** An open empty-space menu: the long-pressed Widget Zone of its Page and the press point inside it. */
 private data class EmptySpaceMenu(
-    val zone: WidgetZoneId,
+    val zone: PageZone,
     val at: Offset,
 )
 
@@ -179,14 +179,14 @@ class HomeActivity : ComponentActivity() {
                                     is AddWidgetOutcome.Added, AddWidgetOutcome.Cancelled -> null
                                 }
                             if (message != null) scope.launch { snackbars.showSnackbar(getString(message)) }
-                            // The new widget's Resize Frame opens at once (Launcher3).
-                            if (outcome is AddWidgetOutcome.Added) editor.added(outcome.widgetId)
+                            // The new widget's Page shows and its Resize Frame opens at once (Launcher3).
+                            if (outcome is AddWidgetOutcome.Added) editor.added(outcome.widgetId, outcome.page) else editor.addEnded()
                         }
                     val pickWidget =
                         rememberLauncherForActivityResult(WidgetPickerContract()) { picked ->
                             if (picked != null) {
                                 drawer.close()
-                                addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, WidgetZoneId.addOrder(picked.zone)))
+                                addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, picked.zone))
                             }
                         }
                     val drawerActions =
@@ -214,11 +214,11 @@ class HomeActivity : ComponentActivity() {
                             WidgetDropTarget(editor) { payload, drop ->
                                 when (payload) {
                                     is WidgetDragPayload.Provider ->
-                                        addWidget.launch(AddWidgetRequest(payload.provider, payload.profile, listOf(drop.zone), drop))
+                                        addWidget.launch(AddWidgetRequest(payload.provider, payload.profile, null, drop))
                                     is WidgetDragPayload.Pin ->
                                         WidgetDragHandOff.pins.take(payload.token)?.let { pin ->
                                             val info = pin.getAppWidgetProviderInfo(this@HomeActivity) ?: return@let
-                                            addWidget.launch(AddWidgetRequest(info.provider, info.profile, listOf(drop.zone), drop, pin))
+                                            addWidget.launch(AddWidgetRequest(info.provider, info.profile, null, drop, pin))
                                         }
                                 }
                             }
@@ -237,6 +237,8 @@ class HomeActivity : ComponentActivity() {
                             emptySpaceMenu = null
                             editor.leave()
                             drawer.close()
+                            // On another Page Home scrolls back to the Home Page; there it does nothing more.
+                            editor.showHomePage()
                         }
                     }
 
@@ -264,7 +266,7 @@ class HomeActivity : ComponentActivity() {
                                 enabled = !drawer.isShown && emptySpaceMenu == null && editor.mode == EditMode.Idle,
                             ),
                     ) {
-                        HomePage(
+                        HomePages(
                             drawer,
                             onSwipeDown = graph.notificationShade::expand,
                             pieZone =
@@ -275,7 +277,7 @@ class HomeActivity : ComponentActivity() {
                                     }
                                 }),
                             widgets = widgets,
-                            layoutOf = graph.widgetHost::layout,
+                            layoutsOf = { rows, zones, minPages -> graph.widgetHost.layouts(rows, zones, minPages) },
                             widgetContent = { widget, _, _ ->
                                 val adding = pending?.takeIf { it.row.appWidgetId == widget.id }
                                 if (adding != null) {
@@ -418,7 +420,10 @@ class HomeActivity : ComponentActivity() {
         private val scope: CoroutineScope,
         private val snackbars: SnackbarHostState,
     ) : WidgetEditActions {
-        override fun save(layout: WidgetLayout) = graph.widgetHost.save(layout)
+        override fun save(
+            page: Int,
+            layout: WidgetLayout,
+        ) = graph.widgetHost.save(page, layout)
 
         override fun discard(id: Int) = graph.widgetHost.discard(id)
 

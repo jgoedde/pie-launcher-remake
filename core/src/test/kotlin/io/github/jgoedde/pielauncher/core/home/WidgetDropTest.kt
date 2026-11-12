@@ -16,6 +16,7 @@ class WidgetDropTest {
         target: DragTarget,
     ): WidgetDrop =
         WidgetDrop.of(
+            HOME_PAGE,
             WidgetDrag
                 .start(on, DraggedWidget.new(bounds), nowMs = 0)
                 .moveTo(target, nowMs = 0)
@@ -65,8 +66,8 @@ class WidgetDropTest {
     }
 
     @Test
-    fun `a drop survives the trip to the add trampoline as ints`() {
-        val drop = WidgetDrop(HomeLower, CellRect(1, 0, 2, 1), mapOf(3 to CellRect(3, 0, 1, 1), 4 to CellRect(0, 0, 1, 1)))
+    fun `a drop survives the trip to the add trampoline as ints, with its Page`() {
+        val drop = WidgetDrop(3, WidgetZoneId.Page, CellRect(1, 0, 2, 1), mapOf(3 to CellRect(3, 0, 1, 1), 4 to CellRect(0, 0, 1, 1)))
 
         assertEquals(drop, WidgetDrop.fromInts(drop.toInts()))
     }
@@ -80,7 +81,7 @@ class WidgetDropTest {
 
     @Test
     fun `malformed ints decode to nothing`() {
-        assertEquals(null, WidgetDrop.fromInts(intArrayOf(9, 0, 0)))
+        assertEquals(null, WidgetDrop.fromInts(intArrayOf(0, 9, 0, 0, 1, 1)))
         assertEquals(null, SpanBounds.fromInts(intArrayOf(1, 1)))
     }
 }

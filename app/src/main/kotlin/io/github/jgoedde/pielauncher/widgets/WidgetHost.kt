@@ -18,10 +18,13 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CellSpan
-import io.github.jgoedde.pielauncher.core.home.HOME_PAGE
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
+import io.github.jgoedde.pielauncher.core.home.PageCompaction
+import io.github.jgoedde.pielauncher.core.home.PageLayouts
+import io.github.jgoedde.pielauncher.core.home.PagePlacement
+import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.ProviderSizes
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
@@ -31,7 +34,6 @@ import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
-import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.WidgetRow
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +62,13 @@ class WidgetHost(
 ) {
     private val dao = database.widgets()
     private val manager: AppWidgetManager = AppWidgetManager.getInstance(application)
-    private val host = LauncherAppWidgetHost(application, onRemoved = { id -> appScope.launch { dao.delete(listOf(id)) } })
+    private val host =
+        LauncherAppWidgetHost(application, onRemoved = { id ->
+            appScope.launch {
+                dao.delete(listOf(id))
+                compactPages()
+            }
+        })
 
     private val pxPerDp: Float get() = application.resources.displayMetrics.density
 
@@ -165,16 +173,17 @@ class WidgetHost(
     ): WidgetSpans = info.spans(grid, pxPerDp)
 
     /**
-     * Shows bound widget [id] of [info] as a placeholder at [at] until [place] or [clearPending],
-     * with the neighbours a drop [moved] at their new cells meanwhile.
+     * Shows bound widget [id] of [info] as a placeholder at [at] on [page] until [place] or
+     * [clearPending], with the neighbours a drop [moved] at their new cells meanwhile.
      */
     fun showPending(
         id: Int,
         info: AppWidgetProviderInfo,
+        page: Int,
         at: LaidOutWidget,
         moved: List<LaidOutWidget> = emptyList(),
     ) {
-        pendingWidget.value = PendingWidget(WidgetRow(id, info.provider, HOME_PAGE, at.zone, at.cells), info, moved)
+        pendingWidget.value = PendingWidget(WidgetRow(id, info.provider, page, at.zone, at.cells), info, moved)
     }
 
     /** Removes the placeholder of widget [id], if it is the one shown. */
@@ -195,36 +204,39 @@ class WidgetHost(
         options: Bundle?,
     ) = host.startAppWidgetConfigureActivityForResult(activity, id, 0, requestCode, options)
 
-    /** The Home Page's Widget Layout: [rows] on [zones], with each provider's span bounds. */
-    fun layout(
+    /**
+     * The Widget Layouts of all Pages: [rows] on [zones], with each provider's span bounds. There
+     * are at least [minPages] Pages, so a Page a drag just made shows before it holds anything.
+     */
+    fun layouts(
         rows: List<WidgetRow>,
         zones: HomeZones,
-    ): WidgetLayout {
+        minPages: Int = 1,
+    ): PageLayouts {
         val grid = zones.catalogGrid(pxPerDp)
-        return WidgetLayout(
-            zones.grids,
-            rows.filter { it.page == HOME_PAGE }.map { row ->
+        val byPage = rows.groupBy { it.page }
+        return PageLayouts.of(zones, maxOf(PageCompaction.pageCount(byPage.keys), minPages)) { page ->
+            byPage[page].orEmpty().map { row ->
                 val bounds = info(row.appWidgetId)?.spanBounds(grid, pxPerDp) ?: SpanBounds.fixed(row.cells.span)
                 LaidOutWidget(row.appWidgetId, row.zone, row.cells, bounds)
-            },
-        )
+            }
+        }
     }
 
-    /** Where a widget of [info] would go: the first of [targets] on the Home Page with room, or a rejection. */
+    /** Where a widget of [info] would go: [first], else the first Page zone with room, else a new Page ([PageLayouts.add]). */
     suspend fun findSpot(
         info: AppWidgetProviderInfo,
-        targets: List<WidgetZoneId>,
+        first: PageZone?,
         zones: HomeZones,
-    ): LayoutResult =
-        layout(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), targets)
+    ): PagePlacement =
+        layouts(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), first)
 
     /** Whether a widget of [info] still fits where it was dropped ([drop]): the placement, or a rejection. */
     suspend fun findSpot(
         info: AppWidgetProviderInfo,
         drop: WidgetDrop,
         zones: HomeZones,
-    ): LayoutResult =
-        layout(dao.all(), zones).place(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), drop)
+    ): PagePlacement = placeOnDrop(dao.all(), AppWidgetManager.INVALID_APPWIDGET_ID, info, drop, zones)
 
     /**
      * Places the bound widget [id] where it was dropped ([drop]), moves the neighbours that drop
@@ -234,63 +246,97 @@ class WidgetHost(
         id: Int,
         drop: WidgetDrop,
         zones: HomeZones,
-    ): LayoutResult =
+    ): PagePlacement =
         placing.withLock {
-            val info = info(id) ?: return LayoutResult.Rejected(Rejection.NoRoom)
+            val info = info(id) ?: return PagePlacement(null, LayoutResult.Rejected(Rejection.NoRoom))
             val rows = dao.all()
-            val result = layout(rows, zones).place(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), drop)
-            if (result is LayoutResult.Changed) {
+            val placed = placeOnDrop(rows, id, info, drop, zones)
+            val result = placed.result
+            val zone = placed.zone
+            if (result is LayoutResult.Changed && zone != null) {
                 val byId = rows.associateBy { it.appWidgetId }
                 val moved = result.moved.mapNotNull { widget -> byId[widget.id]?.copy(zone = widget.zone, cells = widget.cells) }
-                dao.insertAll(moved + WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
+                dao.insertAll(moved + WidgetRow(id, info.provider, zone.page, result.widget.zone, result.widget.cells))
+                compactPages()
             }
             clearPending(id)
-            result
+            placed
         }
 
     /**
-     * Places the bound widget [id] at the first free spot of [targets] and records it. Nothing is
-     * recorded on a rejection.
+     * Places the bound widget [id] at [first], else the first Page zone with room, else on a new
+     * Page, and records it. Nothing is recorded on a rejection.
      */
     suspend fun place(
         id: Int,
-        targets: List<WidgetZoneId>,
+        first: PageZone?,
         zones: HomeZones,
-    ): LayoutResult =
+    ): PagePlacement =
         placing.withLock {
-            val info = info(id) ?: return LayoutResult.Rejected(Rejection.NoRoom)
-            val result = layout(dao.all(), zones).add(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), targets)
-            if (result is LayoutResult.Changed) {
-                dao.insert(WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
+            val info = info(id) ?: return PagePlacement(null, LayoutResult.Rejected(Rejection.NoRoom))
+            val placed = layouts(dao.all(), zones).add(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), first)
+            val result = placed.result
+            val zone = placed.zone
+            if (result is LayoutResult.Changed && zone != null) {
+                dao.insert(WidgetRow(id, info.provider, zone.page, result.widget.zone, result.widget.cells))
             }
             clearPending(id)
-            result
+            placed
         }
+
+    /** [drop] of widget [id] on the layouts of [rows]; a Page past the last one is a new, empty Page. */
+    private fun placeOnDrop(
+        rows: List<WidgetRow>,
+        id: Int,
+        info: AppWidgetProviderInfo,
+        drop: WidgetDrop,
+        zones: HomeZones,
+    ): PagePlacement {
+        val layouts = layouts(rows, zones)
+        val page = drop.page.coerceAtMost(layouts.pages.size)
+        val layout = layouts.pages.getOrNull(page) ?: layouts.newPage
+        val result = layout.place(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), drop)
+        return PagePlacement(PageZone(page, drop.zone).takeIf { result is LayoutResult.Changed }, result)
+    }
 
     /** Takes a placed widget back out: drops its row and deletes its id. */
     suspend fun remove(id: Int) {
         dao.delete(listOf(id))
         host.deleteAppWidgetId(id)
+        placing.withLock { compactPages() }
     }
 
     /**
-     * Records the Home Page's widgets where [layout] has them (a committed move with its reflow).
+     * Records the widgets of [page] where [layout] has them (a committed move with its reflow; a
+     * widget moved in from another Page leaves that one), then removes Pages left empty.
      * Runs in the app scope, so leaving Home right after a drop still saves it.
      */
-    fun save(layout: WidgetLayout) {
+    fun save(
+        page: Int,
+        layout: WidgetLayout,
+    ) {
         appScope.launch {
             placing.withLock {
                 val rows = dao.all().associateBy { it.appWidgetId }
                 val changed =
                     layout.widgets.mapNotNull { widget ->
-                        rows[widget.id]?.takeIf { it.zone != widget.zone || it.cells != widget.cells }?.copy(
+                        rows[widget.id]?.takeIf { it.page != page || it.zone != widget.zone || it.cells != widget.cells }?.copy(
+                            page = page,
                             zone = widget.zone,
                             cells = widget.cells,
                         )
                     }
                 if (changed.isNotEmpty()) dao.insertAll(changed)
+                compactPages()
             }
         }
+    }
+
+    /** Removes empty non-Home Pages (PRD 3.1): the Pages right of a gap move left. */
+    private suspend fun compactPages() {
+        val rows = dao.all()
+        val moves = PageCompaction.moves(rows.associate { it.appWidgetId to it.page })
+        if (moves.isNotEmpty()) dao.insertAll(rows.mapNotNull { row -> moves[row.appWidgetId]?.let { row.copy(page = it) } })
     }
 
     /** Deletes the removed widget [id] for good once its undo window is over (PRD 7.5): row and id. */
@@ -309,6 +355,7 @@ class WidgetHost(
         val result = WidgetReconcile.of(host.appWidgetIds.toSet(), dao.all().map { it.appWidgetId }.toSet())
         result.orphanHostIds.forEach(host::deleteAppWidgetId)
         if (result.orphanRows.isNotEmpty()) dao.delete(result.orphanRows)
+        placing.withLock { compactPages() }
         if (result.orphanHostIds.isNotEmpty() || result.orphanRows.isNotEmpty()) {
             Log.i(TAG, "Reconciled widgets: deleted ids ${result.orphanHostIds}, dropped rows ${result.orphanRows}")
         }

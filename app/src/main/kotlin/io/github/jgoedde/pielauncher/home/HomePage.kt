@@ -3,6 +3,7 @@ package io.github.jgoedde.pielauncher.home
 import android.os.SystemClock
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -11,9 +12,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +28,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -33,6 +40,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -50,6 +59,8 @@ import io.github.jgoedde.pielauncher.core.home.CellGrid
 import io.github.jgoedde.pielauncher.core.home.EditMode
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
+import io.github.jgoedde.pielauncher.core.home.PageLayouts
+import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.WidgetDrag
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
@@ -60,34 +71,42 @@ import kotlin.math.roundToInt
 /** Home Page dimensions. Code constants by design, never configuration. */
 object HomePageLayout {
     val PieZoneHeight: Dp = 240.dp
+
+    /** How close to a side a dragged widget's finger must dwell to change the Page. */
+    val PageEdge: Dp = 32.dp
 }
 
-/** Draws one placed widget at the given size; the Home Page positions it on its cells. */
+/** Draws one placed widget at the given size; its Page positions it on its cells. */
 typealias WidgetContent = @Composable (widget: LaidOutWidget, width: Dp, height: Dp) -> Unit
 
 /**
- * The Home Page, top to bottom: upper Widget Zone (remaining height), Pie Zone, lower Widget
- * Zone (two cell rows), laid out by [HomeZones]. Everything sits inside the mandatory system
- * gesture insets, so touches in those strips never reach the launcher. In either Widget Zone a
- * swipe up drags the App Drawer open, a swipe down calls [onSwipeDown] (the notification shade),
- * and a long-press on empty space calls [onEmptyLongPress] with the zone and the press point in
- * that zone. [pieZone] carries the Pie's touch handling. [widgets] are laid out on the zones
- * by [layoutOf]. [onZonesLaidOut] receives the zone grids, so widgets can be placed from
- * outside the Home Page.
+ * The Pages in a stock [HorizontalPager] (PRD 3.1): the Home Page leftmost, top to bottom upper
+ * Widget Zone (remaining height), Pie Zone, lower Widget Zone (two cell rows); every other Page
+ * one Widget Zone over its full height, laid out by [HomeZones]. Everything sits inside the
+ * mandatory system gesture insets, so touches in those strips never reach the launcher. In any
+ * Widget Zone a swipe up drags the App Drawer open, a swipe down calls [onSwipeDown] (the
+ * notification shade), and a long-press on empty space calls [onEmptyLongPress] with the zone and
+ * the press point in that zone. [pieZone] carries the Pie's touch handling. [widgets] are laid
+ * out on the Pages by [layoutsOf] (with at least the given number of Pages). [onZonesLaidOut]
+ * receives the zone grids, so widgets can be placed from outside the home screen.
+ *
+ * Pages are swiped only at rest; in Edit Mode the [editor] drives the Page shown. Every Page
+ * stays composed, so a dragged widget's view keeps its touch while other Pages show. The Page
+ * indicator shows while Pages are swiped and in Edit Mode.
  */
 @Composable
-internal fun <W> HomePage(
+internal fun <W> HomePages(
     drawer: DrawerState,
     onSwipeDown: () -> Unit,
     pieZone: Modifier,
     widgets: List<W>,
-    layoutOf: (List<W>, HomeZones) -> WidgetLayout,
+    layoutsOf: (List<W>, HomeZones, Int) -> PageLayouts,
     widgetContent: WidgetContent,
-    onEmptyLongPress: (WidgetZoneId, Offset) -> Unit,
+    onEmptyLongPress: (PageZone, Offset) -> Unit,
     onZonesLaidOut: (HomeZones) -> Unit,
     editor: WidgetEditor,
     modifier: Modifier = Modifier,
-    zoneOverlay: @Composable (WidgetZoneId) -> Unit = {},
+    zoneOverlay: @Composable (PageZone) -> Unit = {},
     widgetOverlay: @Composable (LaidOutWidget) -> Unit = {},
 ) {
     BoxWithConstraints(
@@ -98,52 +117,116 @@ internal fun <W> HomePage(
         val density = LocalDensity.current
         val pieZonePx = with(density) { HomePageLayout.PieZoneHeight.toPx() }
         val cellGapPx = with(density) { CellGrid.CELL_GAP_DP.dp.toPx() }
+        val edgePx = with(density) { HomePageLayout.PageEdge.toPx() }
         val zones =
             remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx) {
                 HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx)
             }
         LaunchedEffect(zones) { onZonesLaidOut(zones) }
-        val base = remember(widgets, zones) { layoutOf(widgets, zones) }
+        val minPages = editor.minPages
+        val layouts = remember(widgets, zones, minPages) { layoutsOf(widgets, zones, minPages) }
+        val pageCount = layouts.pages.size
         val origin = remember { arrayOf(Offset.Zero) }
-        SideEffect { editor.laidOut(base, zones, origin[0]) }
+        val widthPx = constraints.maxWidth.toFloat()
+        SideEffect { editor.laidOut(layouts, zones, origin[0], widthPx, edgePx) }
         val drag = (editor.mode as? EditMode.Dragging)?.drag
-        LaunchedEffect(drag?.reorderDueAtMs) {
-            val due = drag?.reorderDueAtMs ?: return@LaunchedEffect
+        LaunchedEffect(editor.dueAtMs) {
+            val due = editor.dueAtMs ?: return@LaunchedEffect
             delay((due - SystemClock.uptimeMillis()).coerceAtLeast(0))
             editor.tick()
         }
+        val pager = rememberPagerState { pageCount }
+        LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect(editor::pageSettled) }
+        LaunchedEffect(editor.page, pageCount) {
+            val target = editor.page
+            if (target < pageCount && pager.currentPage != target) pager.animateScrollToPage(target)
+        }
         // A resize redraws the widget at its new span, and its pushed neighbours, while the handle moves.
         val resize = editor.resize
-        val layout = drag?.preview ?: resize?.preview ?: editor.shown(base)
-        Column(
+        Box(
             Modifier.fillMaxSize().onGloballyPositioned {
                 origin[0] = it.positionInWindow()
-                editor.laidOut(base, zones, origin[0])
+                editor.laidOut(layouts, zones, origin[0], widthPx, edgePx)
             },
         ) {
-            WidgetZoneId.entries.forEach { zoneId ->
-                if (zoneId == WidgetZoneId.HomeLower) PieZone(pieZone, blocked = !editor.mode.pieEnabled)
-                WidgetZone(
-                    layout = layout,
-                    zone = zoneId,
-                    drag = drag,
-                    reordering = drag != null || resize != null,
-                    widgetContent = widgetContent,
-                    widgetOverlay = widgetOverlay,
-                    modifier =
-                        Modifier
-                            .height(with(density) { zones.heightPx(zoneId).toDp() })
-                            .homeSwipes(drawer, onSwipeDown)
-                            .emptySpaceLongPress(
-                                isEmpty = { at -> layout.widgetAt(zoneId, at.x, at.y) == null },
-                                onLongPress = { at -> onEmptyLongPress(zoneId, at) },
-                            ),
-                    overlay = { zoneOverlay(zoneId) },
-                )
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = pageCount,
+                userScrollEnabled = editor.mode == EditMode.Idle,
+                key = { it },
+            ) { page ->
+                val stored = layouts.pages.getOrNull(page) ?: layouts.newPage
+                val shown = editor.shown(page, stored)
+                val dragHere = drag?.takeIf { editor.page == page }
+                val resizeHere = resize?.takeIf { shown.widget(it.widgetId) != null }
+                val layout = dragHere?.preview ?: resizeHere?.preview ?: shown
+                Column(Modifier.fillMaxSize()) {
+                    WidgetZoneId.of(page).forEach { zoneId ->
+                        if (zoneId == WidgetZoneId.HomeLower) PieZone(pieZone, blocked = !editor.mode.pieEnabled)
+                        WidgetZone(
+                            layout = layout,
+                            zone = zoneId,
+                            drag = dragHere,
+                            draggedId = drag?.dragged?.id,
+                            pickedFrom = dragHere?.base ?: layout,
+                            reordering = drag != null || resize != null,
+                            widgetContent = widgetContent,
+                            widgetOverlay = widgetOverlay,
+                            modifier =
+                                Modifier
+                                    .height(with(density) { zones.heightPx(zoneId).toDp() })
+                                    .homeSwipes(drawer, onSwipeDown)
+                                    .emptySpaceLongPress(
+                                        isEmpty = { at -> layout.widgetAt(zoneId, at.x, at.y) == null },
+                                        onLongPress = { at -> onEmptyLongPress(PageZone(page, zoneId), at) },
+                                    ),
+                            overlay = { zoneOverlay(PageZone(page, zoneId)) },
+                        )
+                    }
+                }
             }
+            PageIndicator(
+                pageCount = pageCount,
+                pager = pager,
+                visible = pager.isScrollInProgress || editor.mode != EditMode.Idle,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+            )
         }
     }
 }
+
+/**
+ * The Page indicator (Launcher3 `PageIndicatorDots`): a dot per Page, the shown one opaque, just
+ * above the gesture strip; it fades in while [visible].
+ */
+@Composable
+private fun PageIndicator(
+    pageCount: Int,
+    pager: PagerState,
+    visible: Boolean,
+    modifier: Modifier,
+) {
+    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(PAGE_INDICATOR_FADE_MS), label = "pageIndicator")
+    Row(
+        modifier.graphicsLayer { this.alpha = alpha },
+        horizontalArrangement = Arrangement.spacedBy(PageIndicatorGap),
+    ) {
+        repeat(pageCount) { page ->
+            val selected = page == pager.currentPage
+            Box(
+                Modifier
+                    .size(PageIndicatorDot)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (selected) 1f else 0.4f)),
+            )
+        }
+    }
+}
+
+private const val PAGE_INDICATOR_FADE_MS = 150
+private val PageIndicatorDot = 6.dp
+private val PageIndicatorGap = 8.dp
 
 /**
  * Invisible at rest; a touch-down here opens the Pie. Swipes here never open the Drawer or the
@@ -188,8 +271,8 @@ private const val REORDER_PREVIEW_MAGNITUDE = 0.12f
 private const val REORDER_PREVIEW_MS = 300
 
 /**
- * One Widget Zone of [layout] holding its widgets on their cells. During a [drag] the dragged
- * widget keeps its cells but is not drawn (its picture follows the finger, and its view keeps
+ * One Widget Zone of [layout] holding its widgets on their cells. During a drag the dragged
+ * widget [draggedId] keeps its cells in [pickedFrom] but is not drawn (its picture follows the finger, and its view keeps
  * the touch); its target cells are outlined; neighbours slide to their temporary spots and wiggle.
  * While [reordering] (a drag or a resize), neighbours slide rather than jump.
  */
@@ -198,6 +281,8 @@ private fun WidgetZone(
     layout: WidgetLayout,
     zone: WidgetZoneId,
     drag: WidgetDrag?,
+    draggedId: Int?,
+    pickedFrom: WidgetLayout,
     reordering: Boolean,
     widgetContent: WidgetContent,
     widgetOverlay: @Composable (LaidOutWidget) -> Unit,
@@ -205,9 +290,8 @@ private fun WidgetZone(
     overlay: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val draggedId = drag?.dragged?.id
-    // The dragged widget stays where it was picked up, so its view and touch stay put.
-    val picked = drag?.base?.widget(draggedId ?: -1)?.takeIf { it.zone == zone }
+    // The dragged widget stays where it was picked up, so its view and touch stay put, even while another Page shows.
+    val picked = draggedId?.let(pickedFrom::widget)?.takeIf { it.zone == zone }
     val widgets = layout.inZone(zone).filter { it.id != draggedId } + listOfNotNull(picked)
     val moved =
         drag

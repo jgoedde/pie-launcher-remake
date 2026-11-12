@@ -53,4 +53,25 @@ class HomeZonesTest {
 
         assertEquals(2, zones.catalogGrid(pxPerDp = 1f).rows)
     }
+
+    @Test
+    fun `a non-Home Page is one Widget Zone over the full height with the Home Page's cell size`() {
+        // 400 wide -> 100 px cells. 1000 tall -> 10 rows, no Pie Zone.
+        val zones = HomeZones.of(widthPx = 400f, heightPx = 1000f, pieZoneHeightPx = 500f, cellGapPx = 0f)
+
+        val grids = zones.grids(page = 1)
+
+        assertEquals(setOf(WidgetZoneId.Page), grids.keys)
+        assertEquals(10, grids.getValue(WidgetZoneId.Page).rows)
+        assertEquals(100f, grids.getValue(WidgetZoneId.Page).cellWidth, 0f)
+        assertEquals(0f, zones.topPx(WidgetZoneId.Page), 0f)
+        assertEquals(1000f, zones.heightPx(WidgetZoneId.Page), 0f)
+    }
+
+    @Test
+    fun `the Home Page has its two Widget Zones`() {
+        val zones = HomeZones.of(widthPx = 400f, heightPx = 1000f, pieZoneHeightPx = 500f, cellGapPx = 0f)
+
+        assertEquals(setOf(WidgetZoneId.HomeUpper, WidgetZoneId.HomeLower), zones.grids(HOME_PAGE).keys)
+    }
 }
