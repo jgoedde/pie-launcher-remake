@@ -59,11 +59,11 @@ import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CatalogWidget
 import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.PickerApp
-import io.github.jgoedde.pielauncher.core.home.SpanBounds
+import io.github.jgoedde.pielauncher.core.home.WidgetAddCodec
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetPickerState
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
-import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
 import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.icons.LauncherIcon
@@ -86,11 +86,11 @@ data class WidgetPickerRequest(
     val packageName: String? = null,
 )
 
-/** The widget tapped to add, and the zone the picker was opened for. */
+/** The widget tapped to add, and where: the zone the picker was opened for. */
 data class PickedWidget(
     val provider: ComponentName,
     val profile: UserHandle,
-    val zone: PageZone?,
+    val target: WidgetAddTarget,
 )
 
 /** Runs [WidgetPickerActivity]; null when it closed without adding anything. */
@@ -100,8 +100,7 @@ class WidgetPickerContract : ActivityResultContract<WidgetPickerRequest, PickedW
         input: WidgetPickerRequest,
     ): Intent =
         Intent(context, WidgetPickerActivity::class.java)
-            .putExtra(EXTRA_ZONE, input.zone?.zone?.name)
-            .putExtra(EXTRA_PAGE, input.zone?.page ?: -1)
+            .putExtra(EXTRA_TARGET, WidgetAddCodec.encode(WidgetAddTarget.Tap(input.zone)))
             .putExtra(EXTRA_PACKAGE_NAME, input.packageName)
 
     override fun parseResult(
@@ -111,22 +110,18 @@ class WidgetPickerContract : ActivityResultContract<WidgetPickerRequest, PickedW
         if (resultCode != Activity.RESULT_OK || intent == null) return null
         val provider = intent.getParcelableExtra(EXTRA_PROVIDER, ComponentName::class.java) ?: return null
         val profile = intent.getParcelableExtra(EXTRA_PROFILE, UserHandle::class.java) ?: return null
-        return PickedWidget(provider, profile, zoneOf(intent))
+        val target = WidgetAddCodec.target(intent.getStringExtra(EXTRA_TARGET)) ?: return null
+        return PickedWidget(provider, profile, target)
     }
 
     companion object {
         /** Filters the picker to one app (Launcher3 `EXTRA_PACKAGE_NAME`). */
         const val EXTRA_PACKAGE_NAME = "package_name"
-        internal const val EXTRA_ZONE = "zone"
-        internal const val EXTRA_PAGE = "page"
+
+        /** The tap-add the picker was opened for, handed back with the tapped widget. */
+        internal const val EXTRA_TARGET = "target"
         internal const val EXTRA_PROVIDER = "provider"
         internal const val EXTRA_PROFILE = "profile"
-
-        internal fun zoneOf(intent: Intent): PageZone? {
-            val zone = intent.getStringExtra(EXTRA_ZONE)?.let { name -> WidgetZoneId.entries.firstOrNull { it.name == name } }
-            val page = intent.getIntExtra(EXTRA_PAGE, -1)
-            return if (zone == null || page < 0) null else PageZone(page, zone)
-        }
     }
 }
 
@@ -188,8 +183,7 @@ class WidgetPickerActivity : ComponentActivity() {
             Intent()
                 .putExtra(WidgetPickerContract.EXTRA_PROVIDER, widget.info.provider)
                 .putExtra(WidgetPickerContract.EXTRA_PROFILE, widget.info.profile)
-                .putExtra(WidgetPickerContract.EXTRA_ZONE, WidgetPickerContract.zoneOf(intent)?.zone?.name)
-                .putExtra(WidgetPickerContract.EXTRA_PAGE, WidgetPickerContract.zoneOf(intent)?.page ?: -1),
+                .putExtra(WidgetPickerContract.EXTRA_TARGET, intent.getStringExtra(WidgetPickerContract.EXTRA_TARGET)),
         )
         finish()
     }
@@ -203,10 +197,8 @@ class WidgetPickerActivity : ComponentActivity() {
         widget: PickerWidget,
         shadow: Bitmap,
     ) {
-        val spans = widget.spans
-        val bounds = SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
         val payload = WidgetDragPayload.Provider(widget.info.provider, widget.info.profile)
-        if (WidgetDragHandOff.start(view, payload, bounds, shadow)) finish()
+        if (WidgetDragHandOff.start(view, payload, widget.spans.bounds, shadow)) finish()
     }
 
     override fun onDestroy() {

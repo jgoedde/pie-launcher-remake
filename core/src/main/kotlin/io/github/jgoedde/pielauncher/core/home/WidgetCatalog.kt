@@ -49,7 +49,10 @@ data class WidgetSpans(
     val resizesVertically: Boolean,
     /** Whether even the min span exceeds the grid: shown greyed out, "Too large for this home screen". */
     val tooLarge: Boolean,
-)
+) {
+    /** The span bounds a widget with these spans is added, dragged and resized within. */
+    val bounds: SpanBounds get() = SpanBounds(default, min, max, resizesHorizontally, resizesVertically)
+}
 
 /** One entry of a widget's `OPTION_APPWIDGET_SIZES`, in the [CatalogGrid]'s unit (dp). */
 data class ReportedSize(

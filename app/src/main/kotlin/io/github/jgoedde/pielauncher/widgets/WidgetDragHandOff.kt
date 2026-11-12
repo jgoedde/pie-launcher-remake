@@ -14,6 +14,7 @@ import android.view.DragEvent
 import android.view.View
 import io.github.jgoedde.pielauncher.core.home.PinHandOff
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
+import io.github.jgoedde.pielauncher.core.home.WidgetAddCodec
 
 /**
  * What a widget drag onto Home carries (ADR 0006): the system drag-and-drop hand-off from the
@@ -69,7 +70,7 @@ object WidgetDragHandOff {
     ): Boolean {
         val description =
             ClipDescription("widget", arrayOf(MIME_TYPE)).apply {
-                extras = PersistableBundle().apply { putIntArray(EXTRA_BOUNDS, bounds.toInts()) }
+                extras = PersistableBundle().apply { putString(EXTRA_BOUNDS, WidgetAddCodec.encode(bounds)) }
             }
         val intent =
             when (payload) {
@@ -84,7 +85,7 @@ object WidgetDragHandOff {
     fun boundsOf(event: DragEvent): SpanBounds? {
         val description = event.clipDescription ?: return null
         if (!description.hasMimeType(MIME_TYPE)) return null
-        return description.extras?.getIntArray(EXTRA_BOUNDS)?.let(SpanBounds::fromInts)
+        return WidgetAddCodec.bounds(description.extras?.getString(EXTRA_BOUNDS))
     }
 
     /** What the dropped widget drag [event] carries; null on any other drop. */

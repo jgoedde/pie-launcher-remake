@@ -58,34 +58,9 @@ data class SpanBounds(
     val resizesHorizontally: Boolean,
     val resizesVertically: Boolean,
 ) {
-    /** These bounds as ints, for a drag's ClipDescription extras: default, min, max spans, then the axes. */
-    fun toInts(): IntArray =
-        intArrayOf(
-            default.width,
-            default.height,
-            min.width,
-            min.height,
-            max.width,
-            max.height,
-            if (resizesHorizontally) 1 else 0,
-            if (resizesVertically) 1 else 0,
-        )
-
     companion object {
         /** Bounds that pin a widget to [span]: no resizing, no shrinking. */
         fun fixed(span: CellSpan) = SpanBounds(span, span, span, resizesHorizontally = false, resizesVertically = false)
-
-        /** The bounds [toInts] wrote; null when [ints] are not them. */
-        fun fromInts(ints: IntArray): SpanBounds? {
-            if (ints.size != 8) return null
-            return SpanBounds(
-                CellSpan(ints[0], ints[1]),
-                CellSpan(ints[2], ints[3]),
-                CellSpan(ints[4], ints[5]),
-                resizesHorizontally = ints[6] != 0,
-                resizesVertically = ints[7] != 0,
-            )
-        }
     }
 }
 

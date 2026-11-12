@@ -397,10 +397,7 @@ private fun AppWidgetProviderInfo.spans(
 private fun AppWidgetProviderInfo.spanBounds(
     grid: CatalogGrid,
     pxPerDp: Float,
-): SpanBounds {
-    val spans = spans(grid, pxPerDp)
-    return SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
-}
+): SpanBounds = spans(grid, pxPerDp).bounds
 
 /** A widget being added: its future [row], its provider [info], and the neighbours its drop [moved]. */
 class PendingWidget(

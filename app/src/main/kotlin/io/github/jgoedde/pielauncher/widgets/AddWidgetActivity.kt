@@ -20,85 +20,44 @@ import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.PagePlacement
 import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.WidgetAddCodec
+import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
-import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import kotlinx.coroutines.launch
 
-/** How an "Add widget" ended. */
-sealed interface AddWidgetOutcome {
-    /** Widget [widgetId] is on [page]; Home shows that Page and the widget's Resize Frame opens. */
-    data class Added(
-        val widgetId: Int,
-        val page: Int,
-    ) : AddWidgetOutcome
-
-    data object NoRoom : AddWidgetOutcome
-
-    data object TooLarge : AddWidgetOutcome
-
-    data object Cancelled : AddWidgetOutcome
-}
-
 /**
- * Add the widget of [provider] in [profile] at the first free spot of the long-pressed zone
- * [first], else of any Page, else on a new Page ([io.github.jgoedde.pielauncher.core.home.PageLayouts.add]);
- * or, when it was dragged onto Home, where it was dropped ([drop]). With a widget Pin Request
- * ([pin], PRD 7.6) the provider comes from the request, nothing is configured and the request is
- * accepted once the widget is placed.
+ * Add a widget at [target]. A tap or drop from the Widget Picker names the widget's [provider] in
+ * [profile]; a widget Pin Request ([WidgetAddTarget.Pin], PRD 7.6) brings its own, is never
+ * configured, and is accepted once the widget is placed.
  */
 data class AddWidgetRequest(
-    val provider: ComponentName,
-    val profile: UserHandle,
-    val first: PageZone?,
-    val drop: WidgetDrop? = null,
-    val pin: LauncherApps.PinItemRequest? = null,
+    val target: WidgetAddTarget,
+    val provider: ComponentName? = null,
+    val profile: UserHandle? = null,
 )
 
 /** Runs [AddWidgetActivity]. */
-class AddWidgetContract : ActivityResultContract<AddWidgetRequest, AddWidgetOutcome>() {
+class AddWidgetContract : ActivityResultContract<AddWidgetRequest, WidgetAddOutcome>() {
     override fun createIntent(
         context: Context,
         input: AddWidgetRequest,
     ): Intent =
         Intent(context, AddWidgetActivity::class.java)
+            .putExtra(EXTRA_TARGET, WidgetAddCodec.encode(input.target))
             .putExtra(EXTRA_PROVIDER, input.provider)
             .putExtra(EXTRA_PROFILE, input.profile)
-            .putExtra(EXTRA_FIRST_PAGE, input.first?.page ?: NO_PAGE)
-            .putExtra(EXTRA_FIRST_ZONE, input.first?.zone?.name)
-            .putExtra(EXTRA_DROP, input.drop?.toInts())
-            .putExtra(EXTRA_PIN, input.pin)
 
     override fun parseResult(
         resultCode: Int,
         intent: Intent?,
-    ): AddWidgetOutcome =
-        when (intent?.getStringExtra(EXTRA_OUTCOME)) {
-            OUTCOME_ADDED ->
-                intent
-                    .getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-                    .takeIf { it != AppWidgetManager.INVALID_APPWIDGET_ID }
-                    ?.let { AddWidgetOutcome.Added(it, intent.getIntExtra(EXTRA_PAGE, 0)) }
-                    ?: AddWidgetOutcome.Cancelled
-            OUTCOME_NO_ROOM -> AddWidgetOutcome.NoRoom
-            OUTCOME_TOO_LARGE -> AddWidgetOutcome.TooLarge
-            else -> AddWidgetOutcome.Cancelled
-        }
+    ): WidgetAddOutcome = WidgetAddCodec.outcome(intent?.getStringExtra(EXTRA_OUTCOME)) ?: WidgetAddOutcome.Cancelled
 
     internal companion object {
+        const val EXTRA_TARGET = "target"
         const val EXTRA_PROVIDER = "provider"
         const val EXTRA_PROFILE = "profile"
-        const val EXTRA_FIRST_PAGE = "first_page"
-        const val EXTRA_FIRST_ZONE = "first_zone"
-        const val NO_PAGE = -1
-        const val EXTRA_PAGE = "page"
-        const val EXTRA_DROP = "drop"
-        const val EXTRA_PIN = "pin"
         const val EXTRA_OUTCOME = "outcome"
-        const val EXTRA_WIDGET_ID = "widget_id"
-        const val OUTCOME_ADDED = "added"
-        const val OUTCOME_NO_ROOM = "no_room"
-        const val OUTCOME_TOO_LARGE = "too_large"
-        const val OUTCOME_CANCELLED = "cancelled"
     }
 }
 
@@ -117,34 +76,36 @@ class AddWidgetActivity : ComponentActivity() {
     private val widgets by lazy { graph.widgetHost }
     private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
 
-    /** The long-pressed zone a tap-add tries first; null: the Home Page, upper zone first. */
-    private val first: PageZone? by lazy {
-        val page = intent.getIntExtra(AddWidgetContract.EXTRA_FIRST_PAGE, AddWidgetContract.NO_PAGE)
-        val zone =
-            intent.getStringExtra(AddWidgetContract.EXTRA_FIRST_ZONE)?.let { name ->
-                WidgetZoneId.entries.firstOrNull {
-                    it.name ==
-                        name
-                }
-            }
-        if (page == AddWidgetContract.NO_PAGE || zone == null) null else PageZone(page, zone)
-    }
+    private val target: WidgetAddTarget? by lazy { WidgetAddCodec.target(intent.getStringExtra(AddWidgetContract.EXTRA_TARGET)) }
 
-    /** The widget Pin Request this add answers (dragged in from the pin sheet); null for the Widget Picker. */
-    private val pin: LauncherApps.PinItemRequest? by lazy {
-        intent.getParcelableExtra(AddWidgetContract.EXTRA_PIN, LauncherApps.PinItemRequest::class.java)
-    }
+    /** The long-pressed zone a tap-add tries first; null: the Home Page, upper zone first. */
+    private val first: PageZone? get() = (target as? WidgetAddTarget.Tap)?.zone
 
     /** Where the widget was dropped, when it was dragged onto Home; null for tap-add. */
-    private val drop: WidgetDrop? by lazy { intent.getIntArrayExtra(AddWidgetContract.EXTRA_DROP)?.let(WidgetDrop::fromInts) }
+    private val drop: WidgetDrop?
+        get() =
+            when (val target = target) {
+                is WidgetAddTarget.Drop -> target.drop
+                is WidgetAddTarget.Pin -> target.drop
+                is WidgetAddTarget.Tap, null -> null
+            }
+
+    /**
+     * The widget Pin Request this add answers (dragged in from the pin sheet); null for the Widget
+     * Picker. Taken from [WidgetDragHandOff.pins] once, then kept in the saved state, so it
+     * survives a recreate and process death while a system screen is up.
+     */
+    private var pin: LauncherApps.PinItemRequest? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
             // Recreated while a system screen is up: its result is still on the way.
             widgetId = savedInstanceState.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            pin = savedInstanceState.getParcelable(STATE_PIN, LauncherApps.PinItemRequest::class.java)
             return
         }
+        pin = (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.take(it.handle) }
         val provider = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROVIDER, ComponentName::class.java)
         val profile = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROFILE, UserHandle::class.java)
         val info =
@@ -153,7 +114,7 @@ class AddWidgetActivity : ComponentActivity() {
                 provider != null && profile != null -> widgets.provider(provider, profile)
                 else -> null
             }
-        if (info == null) return finishWith(AddWidgetOutcome.Cancelled)
+        if (target == null || info == null) return finishWith(WidgetAddOutcome.Cancelled)
         lifecycleScope.launch { bind(info) }
     }
 
@@ -169,6 +130,7 @@ class AddWidgetActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_ID, widgetId)
+        outState.putParcelable(STATE_PIN, pin)
     }
 
     @Deprecated("Deprecated in Java")
@@ -178,7 +140,7 @@ class AddWidgetActivity : ComponentActivity() {
         data: Intent?,
     ) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK) return finishWith(AddWidgetOutcome.Cancelled)
+        if (resultCode != RESULT_OK) return finishWith(WidgetAddOutcome.Cancelled)
         when (requestCode) {
             REQUEST_BIND -> onBound()
             REQUEST_CONFIGURE -> onConfigured()
@@ -186,7 +148,7 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private fun onBound() {
-        val info = widgets.info(widgetId) ?: return finishWith(AddWidgetOutcome.Cancelled)
+        val info = widgets.info(widgetId) ?: return finishWith(WidgetAddOutcome.Cancelled)
         // The platform contract: the launcher never configures a pinned widget (the app does).
         if (pin != null || !info.needsConfigure()) return onConfigured()
         lifecycleScope.launch {
@@ -211,16 +173,16 @@ class AddWidgetActivity : ComponentActivity() {
             widgets.startConfigure(this, widgetId, REQUEST_CONFIGURE, options)
         } catch (e: ActivityNotFoundException) {
             Log.w(TAG, "Configure activity missing for widget $widgetId", e)
-            finishWith(AddWidgetOutcome.Cancelled)
+            finishWith(WidgetAddOutcome.Cancelled)
         } catch (e: SecurityException) {
             Log.w(TAG, "Configure activity not allowed for widget $widgetId", e)
-            finishWith(AddWidgetOutcome.Cancelled)
+            finishWith(WidgetAddOutcome.Cancelled)
         }
     }
 
     private fun onConfigured() {
         // Gone when the process died meanwhile and the startup reconcile deleted the unplaced id.
-        if (widgets.info(widgetId) == null) return finishWith(AddWidgetOutcome.Cancelled)
+        if (widgets.info(widgetId) == null) return finishWith(WidgetAddOutcome.Cancelled)
         lifecycleScope.launch {
             val zones = graph.homeGeometry.zones(this@AddWidgetActivity)
             val placement = drop?.let { widgets.place(widgetId, it, zones) } ?: widgets.place(widgetId, first, zones)
@@ -231,9 +193,9 @@ class AddWidgetActivity : ComponentActivity() {
             if (request != null && !accept(request, placed.widget.cells.span)) {
                 widgets.remove(widgetId)
                 widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-                return@launch finishWith(AddWidgetOutcome.Cancelled)
+                return@launch finishWith(WidgetAddOutcome.Cancelled)
             }
-            finishWith(AddWidgetOutcome.Added(widgetId, page))
+            finishWith(WidgetAddOutcome.Added(widgetId, page))
         }
     }
 
@@ -267,21 +229,10 @@ class AddWidgetActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun finishWith(outcome: AddWidgetOutcome) {
-        if (outcome !is AddWidgetOutcome.Added) discard()
+    private fun finishWith(outcome: WidgetAddOutcome) {
+        if (outcome !is WidgetAddOutcome.Added) discard()
         widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-        val result =
-            when (outcome) {
-                is AddWidgetOutcome.Added ->
-                    Intent()
-                        .putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_ADDED)
-                        .putExtra(AddWidgetContract.EXTRA_WIDGET_ID, outcome.widgetId)
-                        .putExtra(AddWidgetContract.EXTRA_PAGE, outcome.page)
-                AddWidgetOutcome.NoRoom -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_NO_ROOM)
-                AddWidgetOutcome.TooLarge -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_TOO_LARGE)
-                AddWidgetOutcome.Cancelled -> Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, AddWidgetContract.OUTCOME_CANCELLED)
-            }
-        setResult(RESULT_OK, result)
+        setResult(RESULT_OK, Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, WidgetAddCodec.encode(outcome)))
         finish()
     }
 
@@ -293,16 +244,17 @@ class AddWidgetActivity : ComponentActivity() {
         widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     }
 
-    private fun LayoutResult.outcome(): AddWidgetOutcome =
+    private fun LayoutResult.outcome(): WidgetAddOutcome =
         when ((this as? LayoutResult.Rejected)?.reason) {
-            Rejection.TooLarge -> AddWidgetOutcome.TooLarge
-            null -> AddWidgetOutcome.Cancelled
-            else -> AddWidgetOutcome.NoRoom
+            Rejection.TooLarge -> WidgetAddOutcome.TooLarge
+            null -> WidgetAddOutcome.Cancelled
+            else -> WidgetAddOutcome.NoRoom
         }
 
     private companion object {
         const val TAG = "AddWidgetActivity"
         const val STATE_ID = "widget_id"
+        const val STATE_PIN = "pin"
         const val REQUEST_BIND = 2
         const val REQUEST_CONFIGURE = 3
     }

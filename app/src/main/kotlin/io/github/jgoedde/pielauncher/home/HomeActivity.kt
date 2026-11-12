@@ -59,6 +59,8 @@ import io.github.jgoedde.pielauncher.core.drawer.offersWidgets
 import io.github.jgoedde.pielauncher.core.home.EditMode
 import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
@@ -82,7 +84,6 @@ import io.github.jgoedde.pielauncher.platform.entryKey
 import io.github.jgoedde.pielauncher.platform.wallpaperPickerIntent
 import io.github.jgoedde.pielauncher.settings.SettingsActivity
 import io.github.jgoedde.pielauncher.widgets.AddWidgetContract
-import io.github.jgoedde.pielauncher.widgets.AddWidgetOutcome
 import io.github.jgoedde.pielauncher.widgets.AddWidgetRequest
 import io.github.jgoedde.pielauncher.widgets.HostedWidget
 import io.github.jgoedde.pielauncher.widgets.PendingWidgetPreview
@@ -175,19 +176,19 @@ class HomeActivity : ComponentActivity() {
                         rememberLauncherForActivityResult(AddWidgetContract()) { outcome ->
                             val message =
                                 when (outcome) {
-                                    AddWidgetOutcome.NoRoom -> R.string.widget_no_space
-                                    AddWidgetOutcome.TooLarge -> R.string.widget_too_large
-                                    is AddWidgetOutcome.Added, AddWidgetOutcome.Cancelled -> null
+                                    WidgetAddOutcome.NoRoom -> R.string.widget_no_space
+                                    WidgetAddOutcome.TooLarge -> R.string.widget_too_large
+                                    is WidgetAddOutcome.Added, WidgetAddOutcome.Cancelled -> null
                                 }
                             if (message != null) scope.launch { snackbars.showSnackbar(getString(message)) }
                             // The new widget's Page shows and its Resize Frame opens at once (Launcher3).
-                            if (outcome is AddWidgetOutcome.Added) editor.added(outcome.widgetId, outcome.page) else editor.addEnded()
+                            if (outcome is WidgetAddOutcome.Added) editor.added(outcome.widgetId, outcome.page) else editor.addEnded()
                         }
                     val pickWidget =
                         rememberLauncherForActivityResult(WidgetPickerContract()) { picked ->
                             if (picked != null) {
                                 drawer.close()
-                                addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, picked.zone))
+                                addWidget.launch(AddWidgetRequest(picked.target, picked.provider, picked.profile))
                             }
                         }
                     val drawerActions =
@@ -215,12 +216,9 @@ class HomeActivity : ComponentActivity() {
                             WidgetDropTarget(editor) { payload, drop ->
                                 when (payload) {
                                     is WidgetDragPayload.Provider ->
-                                        addWidget.launch(AddWidgetRequest(payload.provider, payload.profile, null, drop))
-                                    is WidgetDragPayload.Pin ->
-                                        WidgetDragHandOff.pins.take(payload.token)?.let { pin ->
-                                            val info = pin.getAppWidgetProviderInfo(this@HomeActivity) ?: return@let
-                                            addWidget.launch(AddWidgetRequest(info.provider, info.profile, null, drop, pin))
-                                        }
+                                        addWidget.launch(AddWidgetRequest(WidgetAddTarget.Drop(drop), payload.provider, payload.profile))
+                                    // The trampoline takes the Pin Request from WidgetDragHandOff.pins.
+                                    is WidgetDragPayload.Pin -> addWidget.launch(AddWidgetRequest(WidgetAddTarget.Pin(payload.token, drop)))
                                 }
                             }
                         }
