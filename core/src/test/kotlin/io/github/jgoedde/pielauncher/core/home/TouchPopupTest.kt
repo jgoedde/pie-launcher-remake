@@ -38,4 +38,18 @@ class TouchPopupTest {
     fun `a popup too tall for either side is kept inside the bounds`() {
         assertEquals(200, place(touchX = 500, touchY = 200, height = 2100).y)
     }
+
+    @Test
+    fun `a widget's popup opens above the widget, starting at its left edge`() {
+        val widget = PopupBounds(left = 100, top = 1000, right = 600, bottom = 1400)
+
+        assertEquals(PopupPosition(x = 100, y = 700), TouchPopup.placeAbout(widget, width = 400, height = 300, bounds = bounds))
+    }
+
+    @Test
+    fun `without room above a widget its popup opens below it`() {
+        val widget = PopupBounds(left = 100, top = 200, right = 600, bottom = 500)
+
+        assertEquals(PopupPosition(x = 100, y = 500), TouchPopup.placeAbout(widget, width = 400, height = 300, bounds = bounds))
+    }
 }

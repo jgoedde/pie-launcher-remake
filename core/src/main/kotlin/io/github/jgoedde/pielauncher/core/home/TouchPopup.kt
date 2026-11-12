@@ -31,11 +31,24 @@ object TouchPopup {
         width: Int,
         height: Int,
         bounds: PopupBounds,
+    ): PopupPosition =
+        placeAbout(
+            PopupBounds(touchX - ANCHOR_RADIUS_PX, touchY - ANCHOR_RADIUS_PX, touchX + ANCHOR_RADIUS_PX, touchY + ANCHOR_RADIUS_PX),
+            width,
+            height,
+            bounds,
+        )
+
+    /** The same placement about the [anchor] rect, e.g. a long-pressed widget's bounds (its popup, PRD 7.2). */
+    fun placeAbout(
+        anchor: PopupBounds,
+        width: Int,
+        height: Int,
+        bounds: PopupBounds,
     ): PopupPosition {
-        val startAligned = touchX - ANCHOR_RADIUS_PX
-        val x = if (startAligned + width <= bounds.right) startAligned else touchX + ANCHOR_RADIUS_PX - width
-        val above = touchY - ANCHOR_RADIUS_PX - height
-        val y = if (above >= bounds.top) above else touchY + ANCHOR_RADIUS_PX
+        val x = if (anchor.left + width <= bounds.right) anchor.left else anchor.right - width
+        val above = anchor.top - height
+        val y = if (above >= bounds.top) above else anchor.bottom
         return PopupPosition(
             x.coerceIn(bounds.left, maxOf(bounds.left, bounds.right - width)),
             y.coerceIn(bounds.top, maxOf(bounds.top, bounds.bottom - height)),
