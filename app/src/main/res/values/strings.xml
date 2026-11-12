@@ -10,4 +10,54 @@
     <string name="drawer_undo">Undo</string>
     <string name="pin_added">‘%1$s’ added to App Drawer</string>
     <string name="pin_already_added">‘%1$s’ is already in the App Drawer</string>
+
+    <string name="settings_label">Pie Launcher Settings</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_default_home_title">Pie Launcher is not your home app</string>
+    <string name="settings_default_home_text">Make it the default home app to use the Pie and Shortcuts.</string>
+    <string name="settings_default_home_action">Set as home app</string>
+    <string name="settings_category_pie_config">Pie Config</string>
+    <string name="settings_status_default">Default Config</string>
+    <string name="settings_status_imported">Imported %1$s · %2$s · %3$s</string>
+    <string name="settings_status_loading">Loading…</string>
+    <string name="settings_status_broken">The stored Pie Config cannot be read; import a new one</string>
+    <string name="settings_status_title">Pie Config status</string>
+    <string name="settings_status_last_import">Warnings of the last import</string>
+    <string name="settings_status_no_warnings">The last import had no warnings.</string>
+    <string name="settings_status_default_details">The Default Config is active; nothing was imported yet.</string>
+    <string name="settings_status_unavailable">Unavailable Items</string>
+    <string name="settings_status_no_unavailable">Every Pie Item is available.</string>
+    <string name="settings_import">Import Pie Config</string>
+    <string name="settings_import_supporting">Replace the Pie Config with a JSON file</string>
+    <string name="settings_category_appearance">Appearance</string>
+    <string name="settings_wallpaper_style">Wallpaper &amp; style</string>
+    <string name="settings_wallpaper_style_supporting">Themed Icons and Icon Shape</string>
+    <string name="settings_github">GitHub</string>
+    <string name="settings_licenses">Open-source licenses</string>
+    <string name="settings_version">%1$s (%2$d)</string>
+    <string name="settings_back">Back</string>
+    <string name="import_checking">Checking file…</string>
+    <string name="import_applying">Applying…</string>
+    <string name="import_review_title">Import Pie Config?</string>
+    <string name="import_summary">%1$s, %2$s · %3$s</string>
+    <string name="import_apply">Apply</string>
+    <string name="import_cancel">Cancel</string>
+    <string name="import_close">Close</string>
+    <string name="import_rejected_title">Cannot import this file</string>
+    <string name="import_rejected_text">Nothing was changed. Fix these errors and import again:</string>
+    <string name="import_apply_failed_title">Import failed</string>
+    <string name="import_apply_failed_text">The Pie Config could not be saved. The previous one is still active.</string>
+    <string name="unavailable_item">%1$s, item %2$d: %3$s</string>
+    <plurals name="layers">
+        <item quantity="one">%d Layer</item>
+        <item quantity="other">%d Layers</item>
+    </plurals>
+    <plurals name="items">
+        <item quantity="one">%d Item</item>
+        <item quantity="other">%d Items</item>
+    </plurals>
+    <plurals name="warnings">
+        <item quantity="one">%d warning</item>
+        <item quantity="other">%d warnings</item>
+    </plurals>
 </resources>

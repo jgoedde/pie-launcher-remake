@@ -1,11 +1,10 @@
 package io.github.jgoedde.pielauncher.platform
 
-import android.app.Application
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStoreFile
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -22,11 +21,8 @@ import kotlinx.coroutines.flow.map
 @SingleIn(AppScope::class)
 @Inject
 class IconSettingsStore(
-    application: Application,
+    private val store: DataStore<Preferences>,
 ) {
-    // One DataStore per file and process: this class is the only owner of the file.
-    private val store = PreferenceDataStoreFactory.create { application.preferencesDataStoreFile("launcher_settings") }
-
     val settings: Flow<IconSettings> =
         store.data
             .map { IconSettings(themedIcons = it[THEMED_ICONS] ?: true, shapeKey = it[ICON_SHAPE]) }

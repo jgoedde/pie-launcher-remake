@@ -101,3 +101,29 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
 }
+
+// The licenses page shows NOTICE as is (PRD 10.2), so the APK bundles the repository's copy.
+abstract class CopyNoticeTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val notice: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        notice.get().asFile.copyTo(outputDir.get().file("NOTICE").asFile, overwrite = true)
+    }
+}
+
+val copyNotice =
+    tasks.register<CopyNoticeTask>("copyNotice") {
+        notice.set(rootProject.layout.projectDirectory.file("NOTICE"))
+    }
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyNotice, CopyNoticeTask::outputDir)
+    }
+}
