@@ -2,6 +2,10 @@ package io.github.jgoedde.pielauncher.drawer
 
 import android.content.pm.ShortcutInfo
 import android.util.DisplayMetrics
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -9,18 +13,26 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,17 +49,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.icons.IconLoader
 import io.github.jgoedde.pielauncher.icons.LauncherIcon
@@ -60,6 +74,17 @@ import kotlin.math.roundToInt
 private val IconSize = 48.dp
 private val MenuIconSize = 24.dp
 private val OwnerBadgeSize = 20.dp
+
+// Long-press menu sizes, copied from M3's DropdownMenu so the custom menu looks the same.
+private val MenuVerticalPadding = 8.dp
+private val MenuMinWidth = 112.dp
+private val MenuMaxWidth = 280.dp
+
+// Edge margin as in M3's menu, keeps the menu off the system bars.
+private val MenuEdgeMargin = 48.dp
+
+// Transparent room around the menu card so its shadow is not clipped by the popup window.
+private val MenuShadowMargin = 4.dp
 
 /** What a Drawer Entry and its long-press menu can do. */
 interface DrawerEntryActions {
@@ -94,12 +119,10 @@ internal fun DrawerEntryRow(
     var menuShortcuts by remember { mutableStateOf<List<ShortcutInfo>?>(null) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
-    // Where the current press went down, in this row's coordinates; the menu opens there.
+    // Where the current press went down, in this row's coordinates; the menu opens beside it.
     var pressAt by remember { mutableStateOf(Offset.Zero) }
-    var rowSize by remember { mutableStateOf(IntSize.Zero) }
     Box(
         Modifier
-            .onSizeChanged { rowSize = it }
             .pointerInput(Unit) {
                 // Observe only: the clickable below still handles the press.
                 awaitEachGesture { pressAt = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
@@ -147,10 +170,15 @@ internal fun DrawerEntryRow(
         }
         menuShortcuts?.let { shortcuts ->
             val dismiss = { menuShortcuts = null }
-            val offset = menuOffset(pressAt, rowSize)
+            val shadowMargin = MenuShadowMargin.toPx()
+            val edgeMargin = MenuEdgeMargin.toPx()
+            val positionProvider =
+                remember(pressAt, shadowMargin, edgeMargin) {
+                    ThumbMenuPositionProvider(pressAt.x.roundToInt(), shadowMargin, edgeMargin)
+                }
             when (entry) {
-                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, offset, onDismiss = dismiss)
-                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, offset, onDismiss = dismiss)
+                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, positionProvider, onDismiss = dismiss)
+                is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, positionProvider, onDismiss = dismiss)
             }
         }
     }
@@ -160,14 +188,14 @@ internal fun DrawerEntryRow(
 private fun PinnedShortcutMenu(
     entry: DrawerEntry.Shortcut,
     actions: DrawerEntryActions,
-    offset: DpOffset,
+    positionProvider: PopupPositionProvider,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss, offset = offset) {
+    DrawerMenu(positionProvider, onDismiss) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.drawer_remove)) },
             onClick = { run { actions.remove(entry.shortcut) } },
@@ -185,14 +213,14 @@ private fun AppMenu(
     shortcuts: List<ShortcutInfo>,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
-    offset: DpOffset,
+    positionProvider: PopupPositionProvider,
     onDismiss: () -> Unit,
 ) {
     fun run(action: () -> Unit) {
         onDismiss()
         action()
     }
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss, offset = offset) {
+    DrawerMenu(positionProvider, onDismiss) {
         shortcuts.forEach { shortcut ->
             DropdownMenuItem(
                 text = {
@@ -221,18 +249,74 @@ private fun AppMenu(
 }
 
 /**
- * [DropdownMenu] measures its offset from the anchor's bottom-start corner (start is the right
- * edge in RTL); turn the press position into that so the menu opens under the finger. The menu
- * still flips or shifts on its own when there is no room.
+ * Places the menu above and to the left of the press, away from a right thumb (PRD 6.6): its end
+ * edge at the touch X, its bottom edge on the row's top edge. Physical direction, also in RTL.
+ * No room above: flips below the row. No room to the left: shifts right. Otherwise clamps to the
+ * window.
  */
+private class ThumbMenuPositionProvider(
+    private val pressX: Int,
+    private val shadowMargin: Int,
+    private val edgeMargin: Int,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        // The content carries [shadowMargin] of transparent room on every side; place the visible
+        // card, not the content box.
+        val width = popupContentSize.width
+        val height = popupContentSize.height
+        val maxX = maxOf(-shadowMargin, windowSize.width - width + shadowMargin)
+        val x = (anchorBounds.left + pressX - width + shadowMargin).coerceIn(-shadowMargin, maxX)
+        val minY = edgeMargin - shadowMargin
+        val maxY = maxOf(minY, windowSize.height - edgeMargin - height + shadowMargin)
+        val above = anchorBounds.top - height + shadowMargin
+        val below = anchorBounds.bottom - shadowMargin
+        val y =
+            when {
+                above >= minY -> above
+                below <= maxY -> below
+                else -> above.coerceIn(minY, maxY)
+            }
+        return IntOffset(x, y)
+    }
+}
+
+/** An M3-looking menu in a [Popup] placed by [positionProvider]; dismisses on outside tap and back. */
 @Composable
-private fun menuOffset(
-    press: Offset,
-    rowSize: IntSize,
-): DpOffset {
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val x = if (rtl) rowSize.width - press.x else press.x
-    return with(LocalDensity.current) { DpOffset(x.toDp(), (press.y - rowSize.height).toDp()) }
+private fun DrawerMenu(
+    positionProvider: PopupPositionProvider,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val visible = remember { MutableTransitionState(false).apply { targetState = true } }
+    Popup(
+        popupPositionProvider = positionProvider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        AnimatedVisibility(visibleState = visible, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
+            Surface(
+                shape = MenuDefaults.shape,
+                color = MenuDefaults.containerColor,
+                tonalElevation = MenuDefaults.TonalElevation,
+                shadowElevation = MenuDefaults.ShadowElevation,
+                modifier = Modifier.padding(MenuShadowMargin),
+            ) {
+                Column(
+                    Modifier
+                        .padding(vertical = MenuVerticalPadding)
+                        .widthIn(min = MenuMinWidth, max = MenuMaxWidth)
+                        .width(IntrinsicSize.Max)
+                        .verticalScroll(rememberScrollState()),
+                    content = content,
+                )
+            }
+        }
+    }
 }
 
 @Composable
