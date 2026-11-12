@@ -8,8 +8,10 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
+import android.os.Process
 import android.os.UserHandle
 import android.util.Log
+import android.widget.RemoteViews
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -26,13 +28,17 @@ import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetConfigure
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
+import io.github.jgoedde.pielauncher.core.home.WidgetSpans
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.platform.LauncherDatabase
 import io.github.jgoedde.pielauncher.platform.WidgetRow
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,6 +66,14 @@ class WidgetHost(
 
     /** Every placed widget's row, as stored. */
     val widgets: StateFlow<List<WidgetRow>> = dao.observeAll().stateIn(appScope, SharingStarted.Eagerly, emptyList())
+
+    private val pendingWidget = MutableStateFlow<PendingWidget?>(null)
+
+    /**
+     * The widget being added while its configure screen is open (PRD 7.4): bound, not yet
+     * placed. Home draws its preview in the target cells. In memory only.
+     */
+    val pending: StateFlow<PendingWidget?> = pendingWidget.asStateFlow()
 
     /** Updates flow only while listening; the system queues them meanwhile. Called from the Home Activity's onStart. */
     fun startListening() {
@@ -94,6 +108,52 @@ class WidgetHost(
         provider: ComponentName,
         options: Bundle? = null,
     ): Boolean = manager.bindAppWidgetIdIfAllowed(id, profile, provider, options)
+
+    /** Every widget provider of the main profile the Widget Picker may list (not hidden from pickers). */
+    fun pickerProviders(): List<AppWidgetProviderInfo> =
+        manager.getInstalledProvidersForProfile(Process.myUserHandle()).filter {
+            it.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_HIDE_FROM_PICKER == 0
+        }
+
+    /** The installed provider [provider] of [profile], if it still exists. */
+    fun provider(
+        provider: ComponentName,
+        profile: UserHandle,
+    ): AppWidgetProviderInfo? = manager.getInstalledProvidersForProfile(profile).firstOrNull { it.provider == provider }
+
+    /**
+     * The framework's generated home-screen preview of [info] (API 35), or null: none was set,
+     * or the launcher is not bind-allow-listed yet. A blocking binder call.
+     */
+    fun generatedPreview(info: AppWidgetProviderInfo): RemoteViews? {
+        if (info.generatedPreviewCategories and AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN == 0) return null
+        return try {
+            manager.getWidgetPreview(info.provider, info.profile, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "No generated preview for ${info.provider}", e)
+            null
+        }
+    }
+
+    /** The spans of [info] on [grid] (Widget Catalog). */
+    fun spans(
+        info: AppWidgetProviderInfo,
+        grid: CatalogGrid,
+    ): WidgetSpans = info.spans(grid, pxPerDp)
+
+    /** Shows bound widget [id] of [info] as a placeholder at [at] until [place] or [clearPending]. */
+    fun showPending(
+        id: Int,
+        info: AppWidgetProviderInfo,
+        at: LaidOutWidget,
+    ) {
+        pendingWidget.value = PendingWidget(WidgetRow(id, info.provider, HOME_PAGE, at.zone, at.cells), info)
+    }
+
+    /** Removes the placeholder of widget [id], if it is the one shown. */
+    fun clearPending(id: Int) {
+        pendingWidget.update { if (it?.row?.appWidgetId == id) null else it }
+    }
 
     fun createView(
         context: Context,
@@ -146,6 +206,7 @@ class WidgetHost(
             if (result is LayoutResult.Changed) {
                 dao.insert(WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
             }
+            clearPending(id)
             result
         }
 
@@ -178,25 +239,36 @@ internal fun AppWidgetProviderInfo.needsConfigure(): Boolean =
         reconfigurable = widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0,
     )
 
-/** The span bounds of this provider on [grid] (Widget Catalog, Launcher3 `initSpans`); provider px mapped to dp. */
+/** The spans of this provider on [grid] (Widget Catalog, Launcher3 `initSpans`); provider px mapped to dp. */
+private fun AppWidgetProviderInfo.spans(
+    grid: CatalogGrid,
+    pxPerDp: Float,
+): WidgetSpans =
+    WidgetCatalog.spans(
+        ProviderSizes(
+            minWidth = minWidth / pxPerDp,
+            minHeight = minHeight / pxPerDp,
+            minResizeWidth = minResizeWidth / pxPerDp,
+            minResizeHeight = minResizeHeight / pxPerDp,
+            maxResizeWidth = maxResizeWidth / pxPerDp,
+            maxResizeHeight = maxResizeHeight / pxPerDp,
+            targetCells = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null,
+            resizesHorizontally = resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0,
+            resizesVertically = resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0,
+        ),
+        grid,
+    )
+
 private fun AppWidgetProviderInfo.spanBounds(
     grid: CatalogGrid,
     pxPerDp: Float,
 ): SpanBounds {
-    val spans =
-        WidgetCatalog.spans(
-            ProviderSizes(
-                minWidth = minWidth / pxPerDp,
-                minHeight = minHeight / pxPerDp,
-                minResizeWidth = minResizeWidth / pxPerDp,
-                minResizeHeight = minResizeHeight / pxPerDp,
-                maxResizeWidth = maxResizeWidth / pxPerDp,
-                maxResizeHeight = maxResizeHeight / pxPerDp,
-                targetCells = if (targetCellWidth > 0 && targetCellHeight > 0) CellSpan(targetCellWidth, targetCellHeight) else null,
-                resizesHorizontally = resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0,
-                resizesVertically = resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0,
-            ),
-            grid,
-        )
+    val spans = spans(grid, pxPerDp)
     return SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
 }
+
+/** A widget being added: its future [row] and its provider [info]. */
+class PendingWidget(
+    val row: WidgetRow,
+    val info: AppWidgetProviderInfo,
+)

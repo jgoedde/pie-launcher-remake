@@ -68,7 +68,11 @@ import io.github.jgoedde.pielauncher.platform.wallpaperPickerIntent
 import io.github.jgoedde.pielauncher.settings.SettingsActivity
 import io.github.jgoedde.pielauncher.widgets.AddWidgetContract
 import io.github.jgoedde.pielauncher.widgets.AddWidgetOutcome
+import io.github.jgoedde.pielauncher.widgets.AddWidgetRequest
 import io.github.jgoedde.pielauncher.widgets.HostedWidget
+import io.github.jgoedde.pielauncher.widgets.PendingWidgetPreview
+import io.github.jgoedde.pielauncher.widgets.WidgetPickerContract
+import io.github.jgoedde.pielauncher.widgets.WidgetPickerRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
@@ -149,11 +153,28 @@ class HomeActivity : ComponentActivity() {
                     var emptySpaceMenu by remember { mutableStateOf<EmptySpaceMenu?>(null) }
                     val addWidget =
                         rememberLauncherForActivityResult(AddWidgetContract()) { outcome ->
-                            if (outcome == AddWidgetOutcome.NoSpace) {
-                                scope.launch { snackbars.showSnackbar(getString(R.string.widget_no_space)) }
+                            val message =
+                                when (outcome) {
+                                    AddWidgetOutcome.NoRoom -> R.string.widget_no_space
+                                    AddWidgetOutcome.TooLarge -> R.string.widget_too_large
+                                    AddWidgetOutcome.Added, AddWidgetOutcome.Cancelled -> null
+                                }
+                            if (message != null) scope.launch { snackbars.showSnackbar(getString(message)) }
+                        }
+                    val pickWidget =
+                        rememberLauncherForActivityResult(WidgetPickerContract()) { picked ->
+                            if (picked != null) {
+                                addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, WidgetZoneId.addOrder(picked.zone)))
                             }
                         }
-                    val widgets by graph.widgetHost.widgets.collectAsStateWithLifecycle()
+                    val rows by graph.widgetHost.widgets.collectAsStateWithLifecycle()
+                    val pending by graph.widgetHost.pending.collectAsStateWithLifecycle()
+                    // The widget being configured shows as its preview in its target cells (PRD 7.4).
+                    val widgets =
+                        remember(rows, pending) {
+                            val adding = pending?.row?.takeIf { row -> rows.none { it.appWidgetId == row.appWidgetId } }
+                            rows + listOfNotNull(adding)
+                        }
 
                     LaunchedEffect(drawer) {
                         homePresses.collect {
@@ -191,14 +212,19 @@ class HomeActivity : ComponentActivity() {
                             widgets = widgets,
                             layoutOf = graph.widgetHost::layout,
                             widgetContent = { widget, _, _ ->
-                                HostedWidget(
-                                    host = graph.widgetHost,
-                                    appWidgetId = widget.id,
-                                    span = widget.cells.span,
-                                    grid = graph.homeGeometry.catalogGrid(this@HomeActivity),
-                                    onLightBackground = wallpaperWantsDarkIcons.value,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                                val adding = pending?.takeIf { it.row.appWidgetId == widget.id }
+                                if (adding != null) {
+                                    PendingWidgetPreview(graph.widgetHost, adding, Modifier.fillMaxSize())
+                                } else {
+                                    HostedWidget(
+                                        host = graph.widgetHost,
+                                        appWidgetId = widget.id,
+                                        span = widget.cells.span,
+                                        grid = graph.homeGeometry.catalogGrid(this@HomeActivity),
+                                        onLightBackground = wallpaperWantsDarkIcons.value,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             },
                             onEmptyLongPress = { zone, at -> emptySpaceMenu = EmptySpaceMenu(zone, at) },
                             onZonesLaidOut = graph.homeGeometry::report,
@@ -208,7 +234,7 @@ class HomeActivity : ComponentActivity() {
                                         at = menu.at,
                                         onDismiss = { emptySpaceMenu = null },
                                         onWallpaperStyle = { start(wallpaperPickerIntent()) },
-                                        onWidgets = { addWidget.launch(zone) },
+                                        onWidgets = { pickWidget.launch(WidgetPickerRequest(zone = zone)) },
                                         onHomeSettings = { start(Intent(this@HomeActivity, SettingsActivity::class.java)) },
                                     )
                                 }

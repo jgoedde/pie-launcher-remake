@@ -68,13 +68,22 @@
     <string name="home_menu_wallpaper_style">Wallpaper &amp; style</string>
     <string name="home_menu_widgets">Widgets</string>
     <string name="home_menu_home_settings">Home settings</string>
-    <string name="widget_no_space">No space</string>
+    <string name="widget_no_space">No room on this home screen</string>
+    <string name="widget_too_large">Too large for this home screen</string>
+    <string name="widget_picker_title">Widgets</string>
+    <string name="widget_picker_search">Search</string>
+    <string name="widget_picker_add">Add</string>
+    <string name="widget_span">%1$d × %2$d</string>
     <string name="widget_error">Widget can’t be shown</string>
     <string name="pin_widget_title">Add to Home Page</string>
     <string name="pin_widget_size">%1$d × %2$d</string>
     <string name="pin_widget_add">Add</string>
     <string name="pin_widget_cancel">Cancel</string>
     <string name="pin_widget_added">‘%1$s’ added to Home Page</string>
+    <plurals name="widget_count">
+        <item quantity="one">%d widget</item>
+        <item quantity="other">%d widgets</item>
+    </plurals>
     <plurals name="layers">
         <item quantity="one">%d Layer</item>
         <item quantity="other">%d Layers</item>
