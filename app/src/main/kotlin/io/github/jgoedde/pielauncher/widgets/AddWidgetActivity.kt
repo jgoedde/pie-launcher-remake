@@ -17,17 +17,22 @@ import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
+import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import kotlinx.coroutines.launch
 
 /** How an "Add widget" ended. */
 enum class AddWidgetOutcome { Added, NoRoom, TooLarge, Cancelled }
 
-/** Add the widget of [provider] in [profile] at the first free spot of [zones], in order. */
+/**
+ * Add the widget of [provider] in [profile] at the first free spot of [zones], in order; or,
+ * when it was dragged onto Home, where it was dropped ([drop]).
+ */
 data class AddWidgetRequest(
     val provider: ComponentName,
     val profile: UserHandle,
     val zones: List<WidgetZoneId>,
+    val drop: WidgetDrop? = null,
 )
 
 /** Runs [AddWidgetActivity]. */
@@ -40,6 +45,7 @@ class AddWidgetContract : ActivityResultContract<AddWidgetRequest, AddWidgetOutc
             .putExtra(EXTRA_PROVIDER, input.provider)
             .putExtra(EXTRA_PROFILE, input.profile)
             .putExtra(EXTRA_ZONES, input.zones.map { it.name }.toTypedArray())
+            .putExtra(EXTRA_DROP, input.drop?.toInts())
 
     override fun parseResult(
         resultCode: Int,
@@ -54,6 +60,7 @@ class AddWidgetContract : ActivityResultContract<AddWidgetRequest, AddWidgetOutc
         const val EXTRA_PROVIDER = "provider"
         const val EXTRA_PROFILE = "profile"
         const val EXTRA_ZONES = "zones"
+        const val EXTRA_DROP = "drop"
         const val EXTRA_OUTCOME = "outcome"
     }
 }
@@ -80,6 +87,9 @@ class AddWidgetActivity : ComponentActivity() {
             ?: WidgetZoneId.addOrder(null)
     }
 
+    /** Where the widget was dropped, when it was dragged onto Home; null for tap-add. */
+    private val drop: WidgetDrop? by lazy { intent.getIntArrayExtra(AddWidgetContract.EXTRA_DROP)?.let(WidgetDrop::fromInts) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
@@ -95,8 +105,7 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private suspend fun bind(info: AppWidgetProviderInfo) {
-        val zones = graph.homeGeometry.zones(this)
-        val spot = widgets.findSpot(info, targets, zones)
+        val spot = spotFor(info)
         if (spot !is LayoutResult.Changed) return finishWith(spot.outcome())
         widgetId = widgets.allocateId()
         val options = sizeOptions(WidgetCatalog.sizeList(spot.widget.cells.span, graph.homeGeometry.catalogGrid(this)))
@@ -135,9 +144,9 @@ class AddWidgetActivity : ComponentActivity() {
         if (!info.needsConfigure()) return onConfigured()
         lifecycleScope.launch {
             // The spot may have been taken while the bind dialog was up.
-            val spot = widgets.findSpot(info, targets, graph.homeGeometry.zones(this@AddWidgetActivity))
+            val spot = spotFor(info)
             if (spot !is LayoutResult.Changed) return@launch finishWith(spot.outcome())
-            widgets.showPending(widgetId, info, spot.widget)
+            widgets.showPending(widgetId, info, spot.widget, spot.moved)
             configure()
         }
     }
@@ -164,9 +173,16 @@ class AddWidgetActivity : ComponentActivity() {
         // Gone when the process died meanwhile and the startup reconcile deleted the unplaced id.
         if (widgets.info(widgetId) == null) return finishWith(AddWidgetOutcome.Cancelled)
         lifecycleScope.launch {
-            val placed = widgets.place(widgetId, targets, graph.homeGeometry.zones(this@AddWidgetActivity))
+            val zones = graph.homeGeometry.zones(this@AddWidgetActivity)
+            val placed = drop?.let { widgets.place(widgetId, it, zones) } ?: widgets.place(widgetId, targets, zones)
             finishWith(if (placed is LayoutResult.Changed) AddWidgetOutcome.Added else placed.outcome())
         }
+    }
+
+    /** Where the widget of [info] goes: where it was dropped, else the first free spot of [targets]. */
+    private suspend fun spotFor(info: AppWidgetProviderInfo): LayoutResult {
+        val zones = graph.homeGeometry.zones(this)
+        return drop?.let { widgets.findSpot(info, it, zones) } ?: widgets.findSpot(info, targets, zones)
     }
 
     /** Home clears the launcher task, destroying this activity without a result: that is a cancel too. */

@@ -26,6 +26,7 @@ import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetConfigure
+import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
@@ -141,13 +142,17 @@ class WidgetHost(
         grid: CatalogGrid,
     ): WidgetSpans = info.spans(grid, pxPerDp)
 
-    /** Shows bound widget [id] of [info] as a placeholder at [at] until [place] or [clearPending]. */
+    /**
+     * Shows bound widget [id] of [info] as a placeholder at [at] until [place] or [clearPending],
+     * with the neighbours a drop [moved] at their new cells meanwhile.
+     */
     fun showPending(
         id: Int,
         info: AppWidgetProviderInfo,
         at: LaidOutWidget,
+        moved: List<LaidOutWidget> = emptyList(),
     ) {
-        pendingWidget.value = PendingWidget(WidgetRow(id, info.provider, HOME_PAGE, at.zone, at.cells), info)
+        pendingWidget.value = PendingWidget(WidgetRow(id, info.provider, HOME_PAGE, at.zone, at.cells), info, moved)
     }
 
     /** Removes the placeholder of widget [id], if it is the one shown. */
@@ -190,6 +195,36 @@ class WidgetHost(
         zones: HomeZones,
     ): LayoutResult =
         layout(dao.all(), zones).add(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), targets)
+
+    /** Whether a widget of [info] still fits where it was dropped ([drop]): the placement, or a rejection. */
+    suspend fun findSpot(
+        info: AppWidgetProviderInfo,
+        drop: WidgetDrop,
+        zones: HomeZones,
+    ): LayoutResult =
+        layout(dao.all(), zones).place(AppWidgetManager.INVALID_APPWIDGET_ID, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), drop)
+
+    /**
+     * Places the bound widget [id] where it was dropped ([drop]), moves the neighbours that drop
+     * moved, and records it all. Nothing is recorded on a rejection.
+     */
+    suspend fun place(
+        id: Int,
+        drop: WidgetDrop,
+        zones: HomeZones,
+    ): LayoutResult =
+        placing.withLock {
+            val info = info(id) ?: return LayoutResult.Rejected(Rejection.NoRoom)
+            val rows = dao.all()
+            val result = layout(rows, zones).place(id, info.spanBounds(zones.catalogGrid(pxPerDp), pxPerDp), drop)
+            if (result is LayoutResult.Changed) {
+                val byId = rows.associateBy { it.appWidgetId }
+                val moved = result.moved.mapNotNull { widget -> byId[widget.id]?.copy(zone = widget.zone, cells = widget.cells) }
+                dao.insertAll(moved + WidgetRow(id, info.provider, HOME_PAGE, result.widget.zone, result.widget.cells))
+            }
+            clearPending(id)
+            result
+        }
 
     /**
      * Places the bound widget [id] at the first free spot of [targets] and records it. Nothing is
@@ -298,8 +333,9 @@ private fun AppWidgetProviderInfo.spanBounds(
     return SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
 }
 
-/** A widget being added: its future [row] and its provider [info]. */
+/** A widget being added: its future [row], its provider [info], and the neighbours its drop [moved]. */
 class PendingWidget(
     val row: WidgetRow,
     val info: AppWidgetProviderInfo,
+    val moved: List<LaidOutWidget> = emptyList(),
 )

@@ -42,7 +42,8 @@ internal fun DropTargetBar(
     editor: WidgetEditor,
     modifier: Modifier = Modifier,
 ) {
-    val dragging = editor.mode is EditMode.Dragging
+    // A new widget dragged in from outside is not placed yet: nothing to remove or set up.
+    val dragging = (editor.mode as? EditMode.Dragging)?.drag?.dragged?.isNew == false
     AnimatedVisibility(dragging, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
         Row(
             Modifier

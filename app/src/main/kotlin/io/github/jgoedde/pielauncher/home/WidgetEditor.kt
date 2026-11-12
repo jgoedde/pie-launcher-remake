@@ -12,14 +12,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import io.github.jgoedde.pielauncher.core.home.CellRect
+import io.github.jgoedde.pielauncher.core.home.DraggedWidget
 import io.github.jgoedde.pielauncher.core.home.EditMode
 import io.github.jgoedde.pielauncher.core.home.HomeZones
 import io.github.jgoedde.pielauncher.core.home.LaidOutWidget
 import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetDrag
+import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetRemoval
+import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.widgets.WidgetTouchListener
 
 /** A button of the drop-target bar shown at the top during a drag (PRD 7.3). */
@@ -55,8 +60,8 @@ internal interface WidgetEditActions {
  * long-press wrapper's touch reports into Edit Mode transitions. The Home Page tells it its
  * geometry ([laidOut]) so window points can be mapped to Widget Zone cells.
  *
- * #60 hooks in at [EditMode.Selected] (draw the Resize Frame next to the popup) and #61 at
- * [startDrag] (a Widget Picker drag arriving over Home takes the same move path).
+ * #60 hooks in at [EditMode.Selected] (draw the Resize Frame next to the popup). A new widget
+ * dragged in from outside ([startNewDrag]) takes the same move path.
  */
 @Stable
 internal class WidgetEditor(
@@ -88,6 +93,9 @@ internal class WidgetEditor(
     private var base = WidgetLayout(emptyMap(), emptyList())
     private var zones: HomeZones? = null
     private var pageOrigin = Offset.Zero
+
+    /** Where the finger holds the dragged widget, from its top left, in px. */
+    private var grab = Offset.Zero
 
     /** Whether the drag in progress is of a widget that offers "Widget settings". */
     var draggedIsReconfigurable by mutableStateOf(false)
@@ -165,9 +173,55 @@ internal class WidgetEditor(
         mode = mode.tick(clock())
     }
 
-    /** #61: a drag that started outside Home (a Widget Picker preview) takes the same path from here. */
-    fun startDrag(drag: WidgetDrag) {
-        mode = mode.startDrag(drag)
+    /**
+     * A new widget with [bounds] is dragged onto Home from outside (a Widget Picker preview; #62:
+     * the pin sheet). It takes the move path from here, held at its centre; the system draws its
+     * picture.
+     */
+    fun startNewDrag(bounds: SpanBounds) {
+        if (mode is EditMode.Dragging) return
+        commitRemoval()
+        mode = mode.startDrag(WidgetDrag.start(shown(base), DraggedWidget.new(bounds), clock()))
+        draggedIsReconfigurable = false
+        val size = zones?.grid(WidgetZoneId.HomeUpper)?.bounds(CellRect(0, 0, bounds.default.width, bounds.default.height))
+        grab = size?.let { Offset(it.width / 2, it.height / 2) } ?: Offset.Zero
+    }
+
+    /** The new widget's drag is at [finger] in the window, or (null) has left Home. */
+    fun dragNewTo(finger: Offset?) {
+        if (finger == null) {
+            mode = mode.dragTo(null, clock())
+        } else {
+            dragTo(finger)
+        }
+    }
+
+    /**
+     * The new widget is dropped: where it lands, to be bound and configured there ([WidgetDrop]),
+     * or null when it sprang back (a rejection is reported) or was dropped off the Widget Zones.
+     */
+    fun dropNew(): WidgetDrop? {
+        if ((mode as? EditMode.Dragging)?.drag?.dragged?.isNew != true) return null
+        val release = mode.release()
+        mode = release.mode
+        endDrag()
+        return when (val result = release.result) {
+            is LayoutResult.Changed -> WidgetDrop.of(result)
+            is LayoutResult.Rejected -> null.also { actions.rejected(result.reason) }
+            LayoutResult.Unchanged -> null
+        }
+    }
+
+    /** The new widget's drag ended without a drop on Home (cancelled, or dropped elsewhere): nothing is left behind. */
+    fun endNewDrag() {
+        if ((mode as? EditMode.Dragging)?.drag?.dragged?.isNew == true) leave()
+    }
+
+    private fun commitRemoval() {
+        // Another edit starts: a removal still waiting for its undo is final now (its cells may be taken).
+        val step = removal.commit()
+        removal = step.removal
+        discard(step.delete)
     }
 
     private fun discard(widgets: List<LaidOutWidget>) {
@@ -183,12 +237,12 @@ internal class WidgetEditor(
 
     private fun dragTo(finger: Offset) {
         val drag = (mode as? EditMode.Dragging)?.drag ?: return
-        val image = dragImage ?: return
-        dragImage = image.copy(finger = finger)
-        hovered = dropTargets.entries.firstOrNull { it.value.contains(finger) }?.key
+        dragImage = dragImage?.copy(finger = finger)
+        // A new widget has no drop-target bar: it is not placed yet.
+        hovered = if (drag.dragged.isNew) null else dropTargets.entries.firstOrNull { it.value.contains(finger) }?.key
         val zones = zones ?: return
         val onPage = finger - pageOrigin
-        val topLeft = onPage - image.grab
+        val topLeft = onPage - grab
         val target = if (hovered != null) null else zones.dragTarget(onPage.x, onPage.y, topLeft.x, topLeft.y, drag.dragged.span)
         mode = mode.dragTo(target, clock())
     }
@@ -198,10 +252,7 @@ internal class WidgetEditor(
     ) : WidgetTouchListener {
         override fun onLongPress(frame: View) {
             if (mode is EditMode.Dragging) return
-            // Another edit starts: a removal still waiting for its undo is final now (its cells may be taken).
-            val step = removal.commit()
-            removal = step.removal
-            discard(step.delete)
+            commitRemoval()
             mode = mode.longPress(id)
         }
 
@@ -217,7 +268,8 @@ internal class WidgetEditor(
             dropTargets.clear()
             val bounds = frame.windowBounds()
             val finger = Offset(fingerX, fingerY)
-            dragImage = DragImage(image.asImageBitmap(), finger - bounds.topLeft, finger)
+            grab = finger - bounds.topLeft
+            dragImage = DragImage(image.asImageBitmap(), grab, finger)
             dragTo(finger)
         }
 

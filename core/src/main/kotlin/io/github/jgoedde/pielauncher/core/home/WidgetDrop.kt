@@ -13,8 +13,7 @@ data class WidgetDrop(
     val moved: Map<Int, CellRect> = emptyMap(),
 ) {
     /** This drop as ints, for an Intent extra: zone, cells, then id and cells per moved neighbour. */
-    fun toInts(): IntArray =
-        (listOf(zone.ordinal) + cells.ints() + moved.flatMap { (id, cells) -> listOf(id) + cells.ints() }).toIntArray()
+    fun toInts(): IntArray = (listOf(zone.ordinal) + cells.ints() + moved.flatMap { (id, cells) -> listOf(id) + cells.ints() }).toIntArray()
 
     companion object {
         /** The drop [toInts] wrote; null when [ints] are not one. */

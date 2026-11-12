@@ -55,7 +55,13 @@ class WidgetDropTest {
         val tall = bounds(default = CellSpan(2, 2), min = CellSpan(2, 1))
         val drop = dropNew(layout, tall, DragTarget.Cell(HomeLower, 0, 0))
 
-        assertEquals(CellRect(0, 0, 2, 1), layout.place(id = 7, tall, drop).changed().widget.cells)
+        assertEquals(
+            CellRect(0, 0, 2, 1),
+            layout
+                .place(id = 7, tall, drop)
+                .changed()
+                .widget.cells,
+        )
     }
 
     @Test
