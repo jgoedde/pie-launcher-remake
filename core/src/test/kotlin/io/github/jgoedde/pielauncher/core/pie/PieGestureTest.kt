@@ -29,7 +29,7 @@ class PieGestureTest {
     // The dialer has two Shortcuts; so does the Unavailable Item, which must not open them.
     private val gesture =
         PieGesture(
-            PieMetrics.scaled(density = 1f),
+            testMetrics,
             isAvailable = { it != gone },
             shortcutCount = { if (it == dialer || it == gone) 2 else 0 },
         )

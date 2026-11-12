@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ShortcutCardTest {
     // At density 1: icons 26 px in radius, cards 184 px wide and 10 px off the icon, rows 44 px with 6 px padding.
-    private val metrics = PieMetrics.scaled(density = 1f)
+    private val metrics = testMetrics
     private val window = Bounds(0f, 0f, 1000f, 2000f)
 
     private fun place(

@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -76,7 +77,7 @@ import io.github.jgoedde.pielauncher.icons.LauncherIconImage
 import io.github.jgoedde.pielauncher.icons.LocalIconShape
 import kotlin.math.roundToInt
 
-private val IconSize = 44.dp
+private val IconSize = 52.dp
 private val RowIconSize = 20.dp
 private const val SCRIM_ALPHA = 0.4f
 private const val HOVER_SCALE = 1.2f
@@ -128,12 +129,18 @@ fun PieOverlay(
         val fade by animateFloatAsState(if (open) 1f else 0f, motion.defaultEffectsSpec(), label = "pie fade")
         val spread = remember { Animatable(0f) }
         val layerKey = (state as? PieState.Open)?.let { it.layer.id to it.centre }
+        val previousLayerKey = remember { arrayOfNulls<Any>(1) }
         LaunchedEffect(layerKey) {
-            if (layerKey == null) {
-                spread.animateTo(0f, motion.fastSpatialSpec())
-            } else {
-                spread.snapTo(0f)
-                spread.animateTo(1f, motion.defaultSpatialSpec())
+            val switched = previousLayerKey[0] != null && layerKey != null
+            previousLayerKey[0] = layerKey
+            when {
+                layerKey == null -> spread.animateTo(0f, motion.fastSpatialSpec())
+                // A Layer Switch shows the new Layer at once, without spreading it out again.
+                switched -> spread.snapTo(1f)
+                else -> {
+                    spread.snapTo(0f)
+                    spread.animateTo(1f, motion.defaultSpatialSpec())
+                }
             }
         }
         val pie = lastOpen[0] ?: return@BoxWithConstraints
@@ -143,34 +150,38 @@ fun PieOverlay(
 
         val hoveredItem = pie.hovered?.let(pie.layer.items::getOrNull)?.let(controller::resolve)
         val discColor = (hoveredItem as? ResolvedItem.LayerSwitch)?.color?.toColor() ?: MaterialTheme.colorScheme.primary
-        ProgressDisc(
-            progress = if (open) controller.dwellProgress else null,
-            color = discColor,
-            centre = pie.centre,
-            radiusPx = controller.metrics.innerRadius,
-            motion = motion,
-        )
-
         val items = pie.layer.items
         val itemSizePx = controller.metrics.itemRadius * 2
-        items.forEachIndexed { index, item ->
-            val position = PieGeometry.itemPosition(pie.centre, index, items.size, controller.metrics)
-            Box(
-                Modifier
-                    .offset {
-                        IntOffset(
-                            (pie.centre.x + (position.x - pie.centre.x) * spread.value - itemSizePx / 2).roundToInt(),
-                            (pie.centre.y + (position.y - pie.centre.y) * spread.value - itemSizePx / 2).roundToInt(),
-                        )
-                    }.graphicsLayer { alpha = fade },
-            ) {
-                PieItemView(
-                    item = controller.resolve(item),
-                    hovered = open && pie.hovered == index && pie.hoveredRow == null,
-                    sizePx = itemSizePx,
-                    iconLoader = iconLoader,
-                    motion = motion,
-                )
+        // Keyed by Layer and centre: after a Layer Switch the disc and the items start fresh, with no
+        // animation carried over from the previous Layer.
+        key(pie.layer.id, pie.centre) {
+            ProgressDisc(
+                progress = if (open) controller.dwellProgress else null,
+                color = discColor,
+                centre = pie.centre,
+                radiusPx = controller.metrics.innerRadius,
+                motion = motion,
+            )
+            items.forEachIndexed { index, item ->
+                val position = PieGeometry.itemPosition(pie.centre, index, items.size, controller.metrics)
+                Box(
+                    Modifier
+                        .offset {
+                            IntOffset(
+                                (pie.centre.x + (position.x - pie.centre.x) * spread.value - itemSizePx / 2).roundToInt(),
+                                (pie.centre.y + (position.y - pie.centre.y) * spread.value - itemSizePx / 2).roundToInt(),
+                            )
+                        }.graphicsLayer { alpha = fade },
+                ) {
+                    PieItemView(
+                        item = controller.resolve(item),
+                        // The app whose Shortcut list is open keeps its hover outline while the list is open.
+                        hovered = open && (index == pie.hovered || index == pie.shortcuts?.item),
+                        sizePx = itemSizePx,
+                        iconLoader = iconLoader,
+                        motion = motion,
+                    )
+                }
             }
         }
 

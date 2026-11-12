@@ -7,7 +7,7 @@ import kotlin.math.sin
 
 class PieGeometryTest {
     // Radius 120, Inner Circle 90, centre 26, items 26 px from their middle to their edge, 8 px margin.
-    private val metrics = PieMetrics.scaled(density = 1f)
+    private val metrics = testMetrics
     private val centre = Point(500f, 500f)
 
     /** A point [distance] px from [centre], [degrees] clockwise from 12 o'clock. */
