@@ -7,14 +7,16 @@ enum class WidgetZoneId {
 
     /** The Home Page's two-row zone below the Pie Zone. */
     HomeLower,
+
+    /** The one zone of every other Page, over its full height. */
+    Page,
     ;
 
     companion object {
-        /**
-         * The zones a tap-added widget tries, in order (PRD 7.4): the long-pressed zone [first],
-         * then the others top to bottom. With no long-pressed zone (the App Drawer's filtered
-         * Widget Picker) the Home Page from the upper zone down.
-         */
-        fun addOrder(first: WidgetZoneId?): List<WidgetZoneId> = listOfNotNull(first) + entries.filter { it != first }
+        /** The Home Page's zones, top to bottom. */
+        val HOME: List<WidgetZoneId> = listOf(HomeUpper, HomeLower)
+
+        /** The zones of [page], top to bottom. */
+        fun of(page: Int): List<WidgetZoneId> = if (page == HOME_PAGE) HOME else listOf(Page)
     }
 }

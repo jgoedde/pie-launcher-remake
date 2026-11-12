@@ -16,10 +16,7 @@ sealed interface PinAdd {
 
 /** The pin sheet's rules, computed before the sheet shows. */
 object PinSheet {
-    /** A pinned widget goes to the Home Page, upper Widget Zone first. */
-    val TARGETS: List<WidgetZoneId> = WidgetZoneId.addOrder(null)
-
-    /** "Add to home screen" for the result of adding the widget at [TARGETS] ([WidgetLayout.add]). */
+    /** "Add to home screen" for the result of adding the widget with no long-pressed zone ([PageLayouts.add]). */
     fun add(result: LayoutResult): PinAdd =
         when (result) {
             is LayoutResult.Changed -> PinAdd.Ready(result.widget.zone, result.widget.cells.span)

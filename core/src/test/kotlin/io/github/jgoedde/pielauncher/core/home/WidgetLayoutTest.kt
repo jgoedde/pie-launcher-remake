@@ -415,7 +415,7 @@ class WidgetLayoutTest {
 
 /** The Home Page of a 430 x 1130 px window: 100 px cells with 10 px gaps, a 4 x 3 upper zone and a 4 x 2 lower zone. */
 internal fun homePage(vararg widgets: LaidOutWidget) =
-    WidgetLayout(HomeZones.of(widthPx = 430f, heightPx = 1130f, pieZoneHeightPx = 600f, cellGapPx = 10f).grids, widgets.toList())
+    WidgetLayout(HomeZones.of(widthPx = 430f, heightPx = 1130f, pieZoneHeightPx = 600f, cellGapPx = 10f).grids(HOME_PAGE), widgets.toList())
 
 internal fun bounds(
     default: CellSpan,

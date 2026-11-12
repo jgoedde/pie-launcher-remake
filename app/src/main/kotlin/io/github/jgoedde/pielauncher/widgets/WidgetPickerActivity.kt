@@ -57,6 +57,7 @@ import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CatalogWidget
+import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.PickerApp
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
@@ -77,11 +78,11 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * What opens the Widget Picker: the long-pressed Widget Zone (null from the App Drawer) and, to
+ * What opens the Widget Picker: the long-pressed Widget Zone of its Page (null from the App Drawer) and, to
  * filter it to one app, that app's [packageName].
  */
 data class WidgetPickerRequest(
-    val zone: WidgetZoneId? = null,
+    val zone: PageZone? = null,
     val packageName: String? = null,
 )
 
@@ -89,7 +90,7 @@ data class WidgetPickerRequest(
 data class PickedWidget(
     val provider: ComponentName,
     val profile: UserHandle,
-    val zone: WidgetZoneId?,
+    val zone: PageZone?,
 )
 
 /** Runs [WidgetPickerActivity]; null when it closed without adding anything. */
@@ -99,7 +100,8 @@ class WidgetPickerContract : ActivityResultContract<WidgetPickerRequest, PickedW
         input: WidgetPickerRequest,
     ): Intent =
         Intent(context, WidgetPickerActivity::class.java)
-            .putExtra(EXTRA_ZONE, input.zone?.name)
+            .putExtra(EXTRA_ZONE, input.zone?.zone?.name)
+            .putExtra(EXTRA_PAGE, input.zone?.page ?: -1)
             .putExtra(EXTRA_PACKAGE_NAME, input.packageName)
 
     override fun parseResult(
@@ -116,11 +118,15 @@ class WidgetPickerContract : ActivityResultContract<WidgetPickerRequest, PickedW
         /** Filters the picker to one app (Launcher3 `EXTRA_PACKAGE_NAME`). */
         const val EXTRA_PACKAGE_NAME = "package_name"
         internal const val EXTRA_ZONE = "zone"
+        internal const val EXTRA_PAGE = "page"
         internal const val EXTRA_PROVIDER = "provider"
         internal const val EXTRA_PROFILE = "profile"
 
-        internal fun zoneOf(intent: Intent): WidgetZoneId? =
-            intent.getStringExtra(EXTRA_ZONE)?.let { name -> WidgetZoneId.entries.firstOrNull { it.name == name } }
+        internal fun zoneOf(intent: Intent): PageZone? {
+            val zone = intent.getStringExtra(EXTRA_ZONE)?.let { name -> WidgetZoneId.entries.firstOrNull { it.name == name } }
+            val page = intent.getIntExtra(EXTRA_PAGE, -1)
+            return if (zone == null || page < 0) null else PageZone(page, zone)
+        }
     }
 }
 
@@ -182,7 +188,8 @@ class WidgetPickerActivity : ComponentActivity() {
             Intent()
                 .putExtra(WidgetPickerContract.EXTRA_PROVIDER, widget.info.provider)
                 .putExtra(WidgetPickerContract.EXTRA_PROFILE, widget.info.profile)
-                .putExtra(WidgetPickerContract.EXTRA_ZONE, WidgetPickerContract.zoneOf(intent)?.name),
+                .putExtra(WidgetPickerContract.EXTRA_ZONE, WidgetPickerContract.zoneOf(intent)?.zone?.name)
+                .putExtra(WidgetPickerContract.EXTRA_PAGE, WidgetPickerContract.zoneOf(intent)?.page ?: -1),
         )
         finish()
     }

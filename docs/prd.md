@@ -41,7 +41,6 @@ Sources: [How does widget editing work in the Widget Zones?](https://github.com/
 - The **Home Page** is always the leftmost Page and cannot be removed. Launcher start and the Home button land on it. It is the only Page with a Pie Zone.
 - Every other Page is one Widget Zone filling its full height. No Pie there.
 - New Pages are added only on the right: by dwelling with a dragged widget at the right edge, and when a tap-add from the Widget Picker or a widget Pin Request finds no room on any existing Page (a new Page is appended for it). There is no "Add Page" menu entry. Empty non-Home Pages are removed when Edit Mode ends. No Page reordering.
-- Until Pages exist ([#37](https://github.com/jgoedde/pie-launcher-remake/issues/37)), "No room on this home screen" is shown instead of appending a Page.
 - Page indicator in Launcher3 style, just above the gesture strip, visible only while swiping Pages and in Edit Mode.
 
 ### 3.2 Home Page layout
@@ -280,7 +279,7 @@ Reflow follows Launcher3 `ReorderAlgorithm` ([ADR 0007](adr/0007-widget-reflow.m
 - Buttons "Cancel" and "Add to home screen".
 - "Add to home screen": bind (fall back to the bind dialog; a cancelled bind deletes the id and keeps the sheet open), `accept()` with the size options and the id, then place at the first free spot on the Home Page, upper zone first. If nothing fits, a Page is appended (3.1). The launcher shows no configure screen; the app configures the widget itself.
 - Touch and hold the preview card: same drag-to-place as the Widget Picker.
-- "Too large for this home screen" (and, until Pages exist, "No room on this home screen") is computed before the sheet shows and disables the button.
+- "Too large for this home screen" is computed before the sheet shows and disables the button.
 - Declining leaves nothing behind.
 
 ### 7.7 Pin Requests (Shortcuts)

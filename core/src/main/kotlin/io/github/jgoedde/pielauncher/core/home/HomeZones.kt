@@ -6,10 +6,10 @@ import kotlin.math.roundToInt
 const val HOME_PAGE = 0
 
 /**
- * The Home Page split into its two Widget Zones (PRD 3.2): the upper zone takes the height the
- * Pie Zone and the lower zone leave; the lower zone is exactly [LOWER_ZONE_ROWS] cell rows.
- * Both share one cell size and the cell gap. Sizes in px, measured inside the mandatory system
- * gesture insets.
+ * The Widget Zones of the Pages (PRD 3.2, 3.3). The Home Page has two: the upper zone takes the
+ * height the Pie Zone and the lower zone leave; the lower zone is exactly [LOWER_ZONE_ROWS] cell
+ * rows. Every other Page is one zone over its full height ([page]). All share one cell size and
+ * the cell gap. Sizes in px, measured inside the mandatory system gesture insets.
  */
 data class HomeZones(
     val cellPx: Float,
@@ -18,30 +18,38 @@ data class HomeZones(
     val upper: CellGrid,
     val lower: CellGrid,
     val pieZoneHeightPx: Float = 0f,
+    /** The one zone of a non-Home Page. */
+    val page: CellGrid = CellGrid.of(0f, 0f, 0f),
 ) {
-    /** The grid of [zone]: the one place that switches between the Home Page's two zones. */
+    /** A whole Page's height: the Home Page's zones plus its Pie Zone. */
+    val pageHeightPx: Float get() = upperHeightPx + pieZoneHeightPx + lowerHeightPx
+
+    /** The grid of [zone]: the one place that switches between the zones. */
     fun grid(zone: WidgetZoneId): CellGrid =
         when (zone) {
             WidgetZoneId.HomeUpper -> upper
             WidgetZoneId.HomeLower -> lower
+            WidgetZoneId.Page -> page
         }
 
     fun heightPx(zone: WidgetZoneId): Float =
         when (zone) {
             WidgetZoneId.HomeUpper -> upperHeightPx
             WidgetZoneId.HomeLower -> lowerHeightPx
+            WidgetZoneId.Page -> pageHeightPx
         }
 
     /** Where [zone] starts, in px from the top of the Page (the top of the upper zone). */
     fun topPx(zone: WidgetZoneId): Float =
         when (zone) {
-            WidgetZoneId.HomeUpper -> 0f
+            WidgetZoneId.HomeUpper, WidgetZoneId.Page -> 0f
             WidgetZoneId.HomeLower -> upperHeightPx + pieZoneHeightPx
         }
 
     /**
-     * What a dragged widget of [span] is over (PRD 7.3), in Page px. The finger picks the zone,
-     * or the Pie Zone; above or below the Page it counts as the nearest zone. The widget's
+     * What a dragged widget of [span] is over on [page] (PRD 7.3), in Page px. On the Home Page
+     * the finger picks the zone, or the Pie Zone; above or below the Page it counts as the nearest
+     * zone. Any other Page is all one zone. The widget's
      * top-left corner ([left], [top]) snaps to the nearest cell, kept inside the zone at [span]
      * (cut to the zone's grid).
      */
@@ -51,9 +59,11 @@ data class HomeZones(
         left: Float,
         top: Float,
         span: CellSpan,
+        page: Int = HOME_PAGE,
     ): DragTarget {
         val zone =
             when {
+                page != HOME_PAGE -> WidgetZoneId.Page
                 fingerY < upperHeightPx -> WidgetZoneId.HomeUpper
                 fingerY < upperHeightPx + pieZoneHeightPx -> return DragTarget.PieZone
                 else -> WidgetZoneId.HomeLower
@@ -73,8 +83,8 @@ data class HomeZones(
         )
     }
 
-    /** Every Widget Zone of the Home Page with its grid, top to bottom. */
-    val grids: Map<WidgetZoneId, CellGrid> get() = WidgetZoneId.entries.associateWith(::grid)
+    /** Every Widget Zone of [page] with its grid, top to bottom. */
+    fun grids(page: Int): Map<WidgetZoneId, CellGrid> = WidgetZoneId.of(page).associateWith(::grid)
 
     /**
      * The grid widgets are sized against (Widget Catalog): the zone with more rows, converted to
@@ -110,6 +120,7 @@ data class HomeZones(
                 upper = CellGrid.of(widthPx, upperHeight, cellGapPx),
                 lower = CellGrid.of(widthPx, lowerHeight, cellGapPx),
                 pieZoneHeightPx = pieZoneHeightPx,
+                page = CellGrid.of(widthPx, upperHeight + pieZoneHeightPx + lowerHeight, cellGapPx),
             )
         }
     }
