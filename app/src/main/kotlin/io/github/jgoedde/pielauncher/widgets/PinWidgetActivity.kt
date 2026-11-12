@@ -196,7 +196,7 @@ class PinWidgetActivity : ComponentActivity() {
         finish()
     }
 
-    /** Destroyed mid-flow (e.g. by Home) without Add finishing: the bound id must not leak. */
+    /** Destroyed mid-flow (e.g. by Home) without "Add to home screen" finishing: the bound id must not leak. */
     override fun onDestroy() {
         if (isFinishing) deletePending()
         super.onDestroy()
@@ -228,7 +228,7 @@ private class PinSheetContent(
     val add: PinAdd,
 )
 
-/** Launcher3's pin sheet: title, hint, the preview card in a 24 dp container, then Cancel and Add, end-aligned. */
+/** Launcher3's pin sheet: title, hint, the preview card in a 24 dp container, then "Cancel" and "Add to home screen", end-aligned. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PinWidgetSheet(
