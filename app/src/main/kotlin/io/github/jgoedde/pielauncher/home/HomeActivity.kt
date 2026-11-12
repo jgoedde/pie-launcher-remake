@@ -46,6 +46,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
+import io.github.jgoedde.pielauncher.core.drawer.offersWidgets
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
@@ -74,9 +75,11 @@ import io.github.jgoedde.pielauncher.widgets.PendingWidgetPreview
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerContract
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerRequest
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** An open empty-space menu: the long-pressed Widget Zone and the press point inside it. */
 private data class EmptySpaceMenu(
@@ -146,7 +149,6 @@ class HomeActivity : ComponentActivity() {
                     val drawerEntries by drawerViewModel.entries.collectAsStateWithLifecycle()
                     val snackbars = remember { SnackbarHostState() }
                     val scope = rememberCoroutineScope()
-                    val drawerActions = remember(drawer) { HomeDrawerActions(drawer::close, scope, snackbars) }
                     val pie = rememberPieController()
                     LaunchedEffect(pie) { pieViewModel.pie.collect { pie.pie = it } }
 
@@ -164,7 +166,14 @@ class HomeActivity : ComponentActivity() {
                     val pickWidget =
                         rememberLauncherForActivityResult(WidgetPickerContract()) { picked ->
                             if (picked != null) {
+                                drawer.close()
                                 addWidget.launch(AddWidgetRequest(picked.provider, picked.profile, WidgetZoneId.addOrder(picked.zone)))
+                            }
+                        }
+                    val drawerActions =
+                        remember(drawer) {
+                            HomeDrawerActions(drawer::close, scope, snackbars) { app ->
+                                pickWidget.launch(WidgetPickerRequest(packageName = app.packageName))
                             }
                         }
                     val rows by graph.widgetHost.widgets.collectAsStateWithLifecycle()
@@ -269,6 +278,7 @@ class HomeActivity : ComponentActivity() {
         private val closeDrawer: () -> Unit,
         private val scope: CoroutineScope,
         private val snackbars: SnackbarHostState,
+        private val pickWidgets: (LauncherApp) -> Unit,
     ) : DrawerEntryActions {
         override fun launch(entry: DrawerEntry) {
             val launched =
@@ -321,6 +331,14 @@ class HomeActivity : ComponentActivity() {
         override fun uninstall(app: LauncherApp) {
             graph.appLauncher.uninstall(app)
         }
+
+        override suspend fun hasWidgets(app: LauncherApp): Boolean =
+            withContext(Dispatchers.IO) {
+                offersWidgets(app.packageName, graph.widgetHost.pickerProviders().map { it.provider.packageName })
+            }
+
+        /** The picked widget goes to the Home Page, upper Widget Zone first (no zone in the request). */
+        override fun openWidgets(app: LauncherApp) = pickWidgets(app)
     }
 
     override fun onStart() {

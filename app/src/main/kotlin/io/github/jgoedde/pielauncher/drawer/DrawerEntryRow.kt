@@ -68,13 +68,20 @@ interface DrawerEntryActions {
 
     fun uninstall(app: LauncherApp)
 
+    /** Whether the Widget Picker lists any of [app]'s widgets, so its menu offers "Widgets". */
+    suspend fun hasWidgets(app: LauncherApp): Boolean
+
+    /** Opens the Widget Picker filtered to [app]. */
+    fun openWidgets(app: LauncherApp)
+
     /** Removes a pinned Shortcut, undoable for a few seconds. */
     fun remove(shortcut: PinnedShortcut)
 }
 
 /**
  * One Drawer Entry: icon + label, plus the New Badge while it is new. Tap launches; long-press
- * opens its menu. For an app: its Shortcuts, then App info, then Uninstall (not for system apps).
+ * opens its menu. For an app: its Shortcuts, then App info, then Widgets (only when it has any),
+ * then Uninstall (not for system apps).
  * For a pinned Shortcut: Remove, then App info of the owning app.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -87,6 +94,7 @@ internal fun DrawerEntryRow(
 ) {
     // Null while the menu is closed; the Shortcuts are loaded before it opens so it does not jump.
     var menuShortcuts by remember { mutableStateOf<List<ShortcutInfo>?>(null) }
+    var menuHasWidgets by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     // Where the current press went down, in this row's coordinates; the menu opens beside it.
@@ -111,6 +119,7 @@ internal fun DrawerEntryRow(
                         onLongClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             scope.launch {
+                                menuHasWidgets = entry is DrawerEntry.App && actions.hasWidgets(entry.app)
                                 menuShortcuts =
                                     when (entry) {
                                         is DrawerEntry.App -> actions.shortcutsOf(entry.app)
@@ -142,7 +151,7 @@ internal fun DrawerEntryRow(
             val dismiss = { menuShortcuts = null }
             val pressX = pressAt.x.roundToInt()
             when (entry) {
-                is DrawerEntry.App -> AppMenu(entry, shortcuts, iconLoader, actions, pressX, onDismiss = dismiss)
+                is DrawerEntry.App -> AppMenu(entry, shortcuts, menuHasWidgets, iconLoader, actions, pressX, onDismiss = dismiss)
                 is DrawerEntry.Shortcut -> PinnedShortcutMenu(entry, actions, pressX, onDismiss = dismiss)
             }
         }
@@ -176,6 +185,7 @@ private fun PinnedShortcutMenu(
 private fun AppMenu(
     entry: DrawerEntry.App,
     shortcuts: List<ShortcutInfo>,
+    hasWidgets: Boolean,
     iconLoader: IconLoader,
     actions: DrawerEntryActions,
     pressX: Int,
@@ -204,6 +214,12 @@ private fun AppMenu(
             text = { Text(stringResource(R.string.drawer_app_info)) },
             onClick = { run { actions.openAppInfo(entry) } },
         )
+        if (hasWidgets) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.drawer_widgets)) },
+                onClick = { run { actions.openWidgets(entry.app) } },
+            )
+        }
         if (!entry.app.isSystemApp) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.drawer_uninstall)) },
