@@ -85,7 +85,15 @@
             </intent-filter>
         </activity>
 
-        <!-- The widget-add trampoline (PRD 7.4): picker, bind and configure results land here. -->
+        <!-- The Widget Picker (ADR 0006, PRD 7.4): a bottom sheet over Home. -->
+        <activity
+            android:name=".widgets.WidgetPickerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.PieLauncher.Trampoline"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- The widget-add trampoline (PRD 7.4): bind and configure results land here. -->
         <activity
             android:name=".widgets.AddWidgetActivity"
             android:excludeFromRecents="true"
