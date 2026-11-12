@@ -19,6 +19,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +43,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
@@ -54,6 +58,7 @@ import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.drawer.offersWidgets
 import io.github.jgoedde.pielauncher.core.home.EditMode
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetZoneId
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
@@ -80,6 +85,8 @@ import io.github.jgoedde.pielauncher.widgets.AddWidgetOutcome
 import io.github.jgoedde.pielauncher.widgets.AddWidgetRequest
 import io.github.jgoedde.pielauncher.widgets.HostedWidget
 import io.github.jgoedde.pielauncher.widgets.PendingWidgetPreview
+import io.github.jgoedde.pielauncher.widgets.WidgetDragHandOff
+import io.github.jgoedde.pielauncher.widgets.WidgetDragPayload
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerContract
 import io.github.jgoedde.pielauncher.widgets.WidgetPickerRequest
 import kotlinx.coroutines.CoroutineScope
@@ -192,12 +199,33 @@ class HomeActivity : ComponentActivity() {
                     BackHandler(enabled = editor.mode != EditMode.Idle, onBack = editor::leave)
                     val rows by graph.widgetHost.widgets.collectAsStateWithLifecycle()
                     val pending by graph.widgetHost.pending.collectAsStateWithLifecycle()
-                    // The widget being configured shows as its preview in its target cells (PRD 7.4).
+                    // The widget being configured shows as its preview in its target cells (PRD 7.4),
+                    // with the neighbours its drop moved at their new cells.
                     val widgets =
                         remember(rows, pending) {
                             val adding = pending?.row?.takeIf { row -> rows.none { it.appWidgetId == row.appWidgetId } }
-                            rows + listOfNotNull(adding)
+                            val moved = pending?.moved.orEmpty().associateBy { it.id }
+                            val shown =
+                                rows.map { row -> moved[row.appWidgetId]?.let { row.copy(zone = it.zone, cells = it.cells) } ?: row }
+                            shown + listOfNotNull(adding)
                         }
+                    val widgetDrops =
+                        remember(editor, drawer) {
+                            WidgetDropTarget(editor) { payload, drop ->
+                                when (payload) {
+                                    is WidgetDragPayload.Provider ->
+                                        addWidget.launch(AddWidgetRequest(payload.provider, payload.profile, listOf(drop.zone), drop))
+                                }
+                            }
+                        }
+
+                    LaunchedEffect(editor.mode) {
+                        // A widget dragged in from the Widget Picker lands on the Home Page.
+                        if ((editor.mode as? EditMode.Dragging)?.drag?.dragged?.isNew == true) {
+                            emptySpaceMenu = null
+                            drawer.close()
+                        }
+                    }
 
                     LaunchedEffect(drawer) {
                         homePresses.collect {
@@ -222,7 +250,12 @@ class HomeActivity : ComponentActivity() {
                             .fillMaxSize()
                             .onSizeChanged { drawer.travelPx = it.height.toFloat() }
                             .closesResizeFrameOnTapOutside(editor)
-                            .excludesBackGestureAtEdges(
+                            .dragAndDropTarget(
+                                shouldStartDragAndDrop = { event ->
+                                    WidgetDragHandOff.boundsOf(event.toAndroidDragEvent()) != null
+                                },
+                                target = widgetDrops,
+                            ).excludesBackGestureAtEdges(
                                 enabled = !drawer.isShown && emptySpaceMenu == null && editor.mode == EditMode.Idle,
                             ),
                     ) {
@@ -440,6 +473,37 @@ class HomeActivity : ComponentActivity() {
 
 private const val TAG = "HomeActivity"
 
+/**
+ * Home's end of the widget drag hand-off (#34 "Home drag target"): a widget dragged in from the
+ * Widget Picker (and, from #62, the pin sheet) becomes the Edit Mode move of a new widget, with
+ * the same reflow. Dropped on the Widget Zones, it goes to [add] with where it landed.
+ */
+private class WidgetDropTarget(
+    private val editor: WidgetEditor,
+    private val add: (WidgetDragPayload, WidgetDrop) -> Unit,
+) : DragAndDropTarget {
+    override fun onStarted(event: DragAndDropEvent) {
+        WidgetDragHandOff.boundsOf(event.toAndroidDragEvent())?.let(editor::startNewDrag)
+    }
+
+    override fun onEntered(event: DragAndDropEvent) = editor.dragNewTo(event.finger)
+
+    override fun onMoved(event: DragAndDropEvent) = editor.dragNewTo(event.finger)
+
+    override fun onExited(event: DragAndDropEvent) = editor.dragNewTo(null)
+
+    override fun onDrop(event: DragAndDropEvent): Boolean {
+        val payload = WidgetDragHandOff.payloadOf(event.toAndroidDragEvent())
+        editor.dragNewTo(event.finger)
+        val drop = editor.dropNew()
+        if (payload == null || drop == null) return false
+        add(payload, drop)
+        return true
+    }
+
+    override fun onEnded(event: DragAndDropEvent) = editor.endNewDrag()
+}
+
 /** Below the `ActivityResultRegistry` range, so the registry never claims this result. */
 private const val REQUEST_RECONFIGURE = 1
 
@@ -466,3 +530,6 @@ private fun WidgetRemovalSnackbar(
 }
 
 private fun WallpaperColors?.wantsDarkIcons(): Boolean = this != null && colorHints and WallpaperColors.HINT_SUPPORTS_DARK_TEXT != 0
+
+/** The finger of a drag event, relative to the Compose root (the whole window here, edge to edge). */
+private val DragAndDropEvent.finger: Offset get() = toAndroidDragEvent().let { Offset(it.x, it.y) }

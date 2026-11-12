@@ -8,15 +8,19 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Process
 import android.os.UserHandle
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,10 +39,19 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -55,6 +68,7 @@ import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CatalogWidget
 import io.github.jgoedde.pielauncher.core.home.PickerApp
+import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetPickerState
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
@@ -165,6 +179,7 @@ class WidgetPickerActivity : ComponentActivity() {
                     preview = viewModel::preview,
                     onState = viewModel::update,
                     onAdd = ::add,
+                    onPickUp = ::pickUp,
                     onDismiss = ::finish,
                 )
             }
@@ -180,6 +195,21 @@ class WidgetPickerActivity : ComponentActivity() {
                 .putExtra(WidgetPickerContract.EXTRA_ZONE, WidgetPickerContract.zoneOf(intent)?.name),
         )
         finish()
+    }
+
+    /**
+     * Touch and hold on [widget]'s preview (PRD 7.4): a system drag of it starts from [view],
+     * drawn as [shadow], and the picker closes; Home takes the drag over.
+     */
+    private fun pickUp(
+        view: View,
+        widget: PickerWidget,
+        shadow: Bitmap,
+    ) {
+        val spans = widget.spans
+        val bounds = SpanBounds(spans.default, spans.min, spans.max, spans.resizesHorizontally, spans.resizesVertically)
+        val payload = WidgetDragPayload.Provider(widget.info.provider, widget.info.profile)
+        if (WidgetDragHandOff.start(view, payload, bounds, shadow)) finish()
     }
 
     override fun onDestroy() {
@@ -252,6 +282,7 @@ private fun WidgetPickerSheet(
     preview: suspend (PickerWidget, Int) -> PreviewContent,
     onState: ((WidgetPickerState<String, PickerWidget>) -> WidgetPickerState<String, PickerWidget>) -> Unit,
     onAdd: (PickerWidget) -> Unit,
+    onPickUp: (View, PickerWidget, Bitmap) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -282,7 +313,7 @@ private fun WidgetPickerSheet(
                     }
                     if (app.expanded) {
                         items(app.widgets, key = { it.info.provider.flattenToString() }) { widget ->
-                            PickerTile(widget, grid, showAdd = state.selected == widget, preview, onState, onAdd)
+                            PickerTile(widget, grid, showAdd = state.selected == widget, preview, onState, onAdd, onPickUp)
                         }
                     }
                 }
@@ -330,6 +361,7 @@ private fun PickerTile(
     preview: suspend (PickerWidget, Int) -> PreviewContent,
     onState: ((WidgetPickerState<String, PickerWidget>) -> WidgetPickerState<String, PickerWidget>) -> Unit,
     onAdd: (PickerWidget) -> Unit,
+    onPickUp: (View, PickerWidget, Bitmap) -> Unit,
 ) {
     val span = widget.spans.default
     val density = LocalDensity.current
@@ -342,6 +374,29 @@ private fun PickerTile(
                 .roundToPx()
         }
     val content by produceState<PreviewContent?>(null, widget.info.provider) { value = preview(widget, widthPx) }
+    // The preview as drawn, for the drag shadow.
+    val picture = rememberGraphicsLayer()
+    val view = LocalView.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val pickUp =
+        if (widget.spans.tooLarge) {
+            Modifier
+        } else {
+            Modifier.pointerInput(widget) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        scope.launch {
+                            // A software copy: the shadow surface may not draw hardware bitmaps.
+                            val shadow = picture.toImageBitmap().asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
+                            onPickUp(view, widget, shadow)
+                        }
+                    },
+                    onDrag = { change, _ -> change.consume() },
+                )
+            }
+        }
     WidgetTile(
         label = widget.label,
         span = span,
@@ -350,7 +405,15 @@ private fun PickerTile(
         showAdd = showAdd,
         onTap = { onState { it.tapTile(widget, widget.spans.tooLarge) } },
         onAdd = { onAdd(widget) },
-        preview = { WidgetPreview(content, span, grid) },
+        preview = {
+            Box(
+                Modifier.drawWithContent {
+                    picture.record { this@drawWithContent.drawContent() }
+                    drawLayer(picture)
+                },
+            ) { WidgetPreview(content, span, grid) }
+        },
+        previewModifier = pickUp,
     )
 }
 
