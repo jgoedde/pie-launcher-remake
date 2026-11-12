@@ -49,7 +49,10 @@ interface WidgetTouchListener {
  * moved past touch slop or lifted. When it fires it gives a `LONG_PRESS` haptic, takes the touch
  * away from the widget (and from the home gestures) and reports the rest of the gesture to
  * [listener]: a move past slop is a drag. On a scrollable widget the touch is claimed on
- * touch-down, so its list scrolls instead of opening the App Drawer or the shade.
+ * touch-down, so its list scrolls instead of opening the App Drawer or the shade; a widget that
+ * doesn't scroll leaves vertical swipes to Home. The scroll claim is reverted when a drag starts
+ * (Launcher3 `beforeDragStart`): from then on only the launcher's own claim, taken at the
+ * long-press, keeps Home's swipes out of the drag. Every claim ends with the gesture.
  */
 internal class WidgetFrame(
     context: Context,
@@ -59,6 +62,7 @@ internal class WidgetFrame(
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private val timeout = (ViewConfiguration.getLongPressTimeout() * LONG_PRESS_TIMEOUT_FACTOR).toLong()
     private var state = State.Idle
+    private var scrollClaimed = false
     private var downX = 0f
     private var downY = 0f
     private val location = IntArray(2)
@@ -81,14 +85,17 @@ internal class WidgetFrame(
                 downX = ev.x
                 downY = ev.y
                 postDelayed(longPress, timeout)
-                if (isScrollable(this)) parent?.requestDisallowInterceptTouchEvent(true)
+                scrollClaimed = isScrollable(this)
+                if (scrollClaimed) parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE ->
                 if (state == State.Pressed && beyondSlop(ev)) cancelLongPress()
             MotionEvent.ACTION_POINTER_DOWN ->
                 if (state == State.Pressed) cancelLongPress()
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (state == State.Pressed) cancelLongPress()
+                scrollClaimed = false
+            }
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -107,6 +114,7 @@ internal class WidgetFrame(
                     State.LongPressed ->
                         if (beyondSlop(ev) && listener != null) {
                             state = State.Dragging
+                            releaseScrollClaim()
                             listener.onDragStart(this, snapshot(), windowX(ev), windowY(ev))
                         }
                     State.Dragging -> listener?.onDrag(windowX(ev), windowY(ev))
@@ -141,6 +149,13 @@ internal class WidgetFrame(
         removeCallbacks(longPress)
         if (state == State.Pressed) state = State.Idle
         super.cancelLongPress()
+    }
+
+    /** Drops the widget's scroll claim; the launcher's claim from the long-press stays for the drag. */
+    private fun releaseScrollClaim() {
+        if (!scrollClaimed) return
+        scrollClaimed = false
+        parent?.requestDisallowInterceptTouchEvent(state == State.LongPressed || state == State.Dragging)
     }
 
     private fun beyondSlop(ev: MotionEvent) = hypot(ev.x - downX, ev.y - downY) > slop
