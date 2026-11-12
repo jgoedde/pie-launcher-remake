@@ -429,7 +429,7 @@ No Hover Delay, gesture mappings, Drawer, widget, Page, icon theming or diagnost
 Source: [What is the app architecture?](https://github.com/jgoedde/pie-launcher-remake/issues/10).
 
 - **Modules** ([ADR 0001](adr/0001-pure-kotlin-core-module.md)):
-  - `:core`, pure Kotlin/JVM: Pie geometry and hit-testing, the Pie gesture state machine, Layer navigation, Pie Config decoding and validation, App Drawer search ranking, and the `widgets` domain:
+  - `:core`, pure Kotlin/JVM: Pie geometry and hit-testing, the Pie gesture state machine, Layer navigation, Pie Config decoding and validation, App Drawer search ranking, and the widget domain in the `home` package (with the other Home Page logic):
     - **Widget Layout**: all widgets of a Page (Widget Zone, cell rect, span bounds) and each zone's grid. Operations add, drag over, drop, resize, remove and undo; each returns a new layout or a rejection ("no room", "too large", Pie Zone). Holds the reorder rules, cell bounds and hit-testing (7.3).
     - **Widget Catalog**: pure functions over provider facts: spans, the too-large flag, search, grouping by app, the size list (7.1, 7.4).
   - `:app`: Android, Compose UI and platform adapters, packaged by feature: `pie`, `home`, `drawer`, `widgets`, `icons`, `config`, `platform`. `widgets` holds the host, the host view wrapper, the Widget Picker and pin Activities, bind/configure, size reporting and the drag hand-off; it maps platform provider info to Widget Catalog facts.
