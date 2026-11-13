@@ -246,7 +246,7 @@ class WidgetHost(
         }
     }
 
-    /** Where a widget of [info] would go at [target]: where it was dropped, else the first free spot from the tapped zone on. */
+    /** Where a widget of [info] would go at [target]: where it was dropped, else the first free spot from the tapped zone (or the Home Page) on. */
     suspend fun findSpot(
         info: AppWidgetProviderInfo,
         target: WidgetAddTarget,
@@ -256,6 +256,7 @@ class WidgetHost(
             is WidgetAddTarget.Tap -> findSpot(info, target.zone, zones)
             is WidgetAddTarget.Drop -> findSpot(info, target.drop, zones)
             is WidgetAddTarget.Pin -> findSpot(info, target.drop, zones)
+            WidgetAddTarget.PinSheet -> findSpot(info, first = null, zones)
         }
 
     /** Places the bound widget [id] at [target], as [findSpot] would; nothing is recorded on a rejection. */
@@ -268,6 +269,7 @@ class WidgetHost(
             is WidgetAddTarget.Tap -> place(id, target.zone, zones)
             is WidgetAddTarget.Drop -> place(id, target.drop, zones)
             is WidgetAddTarget.Pin -> place(id, target.drop, zones)
+            WidgetAddTarget.PinSheet -> place(id, first = null, zones)
         }
 
     /** Where a widget of [info] would go: [first], else the first Page zone with room, else a new Page ([PageLayouts.add]). */

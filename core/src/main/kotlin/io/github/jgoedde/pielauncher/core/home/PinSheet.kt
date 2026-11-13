@@ -1,10 +1,9 @@
 package io.github.jgoedde.pielauncher.core.home
 
-/** What the pin sheet's "Add to home screen" does for a widget Pin Request (PRD 7.6). */
+/** What the pin sheet's "Add to home screen" does for a widget Pin Request (PRD 7.6), known before the sheet shows. */
 sealed interface PinAdd {
-    /** Enabled: the widget lands in [zone] at [span]. */
+    /** Enabled: the widget lands at [span]. */
     data class Ready(
-        val zone: WidgetZoneId,
         val span: CellSpan,
     ) : PinAdd
 
@@ -12,17 +11,6 @@ sealed interface PinAdd {
     data class Disabled(
         val reason: Rejection,
     ) : PinAdd
-}
-
-/** The pin sheet's rules, computed before the sheet shows. */
-object PinSheet {
-    /** "Add to home screen" for the result of adding the widget with no long-pressed zone ([PageLayouts.add]). */
-    fun add(result: LayoutResult): PinAdd =
-        when (result) {
-            is LayoutResult.Changed -> PinAdd.Ready(result.widget.zone, result.widget.cells.span)
-            is LayoutResult.Rejected -> PinAdd.Disabled(if (result.reason == Rejection.TooLarge) Rejection.TooLarge else Rejection.NoRoom)
-            LayoutResult.Unchanged -> PinAdd.Disabled(Rejection.NoRoom)
-        }
 }
 
 /**

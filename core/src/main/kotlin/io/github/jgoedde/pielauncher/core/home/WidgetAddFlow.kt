@@ -16,6 +16,10 @@ data class AddableWidget(
  * pending preview in the target cells → place, re-checking the spot → accept the Pin Request, if
  * any, only once placed. Driven by [Event]s, it answers with [Effect]s for the trampoline to run.
  * Every exit but [WidgetAddOutcome.Added] deletes the unplaced id and its pending preview.
+ *
+ * For the pin sheet ([WidgetAddTarget.PinSheet]) the spot found is the sheet's "Add to home
+ * screen", offered enabled or disabled with the reason; the flow goes on only once the user adds,
+ * and a cancelled bind dialog deletes the id and offers again, keeping the sheet (Launcher3).
  */
 class WidgetAddFlow(
     private val target: WidgetAddTarget,
@@ -26,7 +30,8 @@ class WidgetAddFlow(
     var state: State = state
         private set
 
-    private val pinned get() = target is WidgetAddTarget.Pin
+    private val pinned get() = target is WidgetAddTarget.Pin || target is WidgetAddTarget.PinSheet
+    private val sheet get() = target is WidgetAddTarget.PinSheet
 
     /**
      * The effects that start the flow, or pick it up after a recreate: a lookup or placement whose
@@ -38,11 +43,10 @@ class WidgetAddFlow(
                 if (widget == null) {
                     finish(WidgetAddOutcome.Cancelled)
                 } else {
-                    this.state = State.FindingSpot
-                    listOf(Effect.FindSpot(target))
+                    findSpot()
                 }
             }
-            State.FindingSpot -> listOf(Effect.FindSpot(target))
+            State.FindingSpot, is State.Offering -> findSpot()
             is State.CheckingSpot -> listOf(Effect.FindSpot(target, state.id))
             is State.Placing -> listOf(Effect.Place(state.id, target))
             State.Binding, is State.AskingToBind, is State.Configuring, is State.Accepting, State.Done -> emptyList()
@@ -55,6 +59,7 @@ class WidgetAddFlow(
                 when (state) {
                     State.FindingSpot -> {
                         val spot = event.placement.result
+                        if (sheet) return offer(spot)
                         if (spot !is LayoutResult.Changed) return finish(spot.outcome())
                         this.state = State.Binding
                         listOf(Effect.Bind(spot.widget.cells.span))
@@ -81,6 +86,11 @@ class WidgetAddFlow(
                     event.ok -> finish(WidgetAddOutcome.Added(state.id, state.page))
                     else -> listOf(Effect.RemovePlaced(state.id)) + finish(WidgetAddOutcome.Cancelled)
                 }
+            Event.AddChosen -> {
+                val ready = (state as? State.Offering)?.add as? PinAdd.Ready ?: return emptyList()
+                this.state = State.Binding
+                listOf(Effect.Bind(ready.span))
+            }
             is Event.Bound -> if (state == State.Binding) bound(event.id) else emptyList()
             is Event.AskingToBind -> {
                 if (state == State.Binding) this.state = State.AskingToBind(event.id)
@@ -90,6 +100,8 @@ class WidgetAddFlow(
                 when {
                     state !is State.AskingToBind -> emptyList()
                     event.granted -> bound(state.id)
+                    // The sheet stays: the user may add again, or drag.
+                    sheet -> listOf(Effect.DeleteUnplaced(state.id)) + findSpot()
                     else -> abandon(state.id, WidgetAddOutcome.Cancelled)
                 }
             is Event.Placed ->
@@ -115,6 +127,21 @@ class WidgetAddFlow(
                 }
             }
         }
+    }
+
+    private fun findSpot(): List<Effect> {
+        state = State.FindingSpot
+        return listOf(Effect.FindSpot(target))
+    }
+
+    private fun offer(spot: LayoutResult): List<Effect> {
+        val add =
+            when (spot) {
+                is LayoutResult.Changed -> PinAdd.Ready(spot.widget.cells.span)
+                else -> PinAdd.Disabled(if (spot.outcome() == WidgetAddOutcome.TooLarge) Rejection.TooLarge else Rejection.NoRoom)
+            }
+        state = State.Offering(add)
+        return listOf(Effect.Offer(add))
     }
 
     private fun bound(id: Int): List<Effect> {
@@ -160,7 +187,8 @@ class WidgetAddFlow(
                 is Placing -> "$PLACING $id"
                 is Accepting -> "$ACCEPTING $id $page"
                 Start -> START
-                FindingSpot -> FINDING_SPOT
+                // Looked up again on restore: the room may have changed meanwhile.
+                FindingSpot, is Offering -> FINDING_SPOT
                 Binding -> BINDING
                 Done -> DONE
             }
@@ -199,6 +227,11 @@ class WidgetAddFlow(
 
         data object FindingSpot : State
 
+        /** The pin sheet shows, offering [add]. */
+        data class Offering(
+            val add: PinAdd,
+        ) : State
+
         /** An id is being allocated and bound. */
         data object Binding : State
 
@@ -232,6 +265,9 @@ class WidgetAddFlow(
 
     /** What happened, as the trampoline reports it. */
     sealed interface Event {
+        /** The user chose the pin sheet's "Add to home screen". */
+        data object AddChosen : Event
+
         data class SpotFound(
             val placement: PagePlacement,
         ) : Event
@@ -289,6 +325,11 @@ class WidgetAddFlow(
          */
         data class Bind(
             val span: CellSpan,
+        ) : Effect
+
+        /** Show the pin sheet, offering [add]: [Event.AddChosen] once the user adds. */
+        data class Offer(
+            val add: PinAdd,
         ) : Effect
 
         /** Show widget [id] as a pending preview at [spot] on [page]. */

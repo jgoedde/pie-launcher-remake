@@ -23,6 +23,12 @@ sealed interface WidgetAddTarget {
         val handle: Long,
         val drop: WidgetDrop,
     ) : WidgetAddTarget
+
+    /**
+     * The pin sheet's "Add to home screen" for the widget Pin Request it shows (PRD 7.6): no drop,
+     * the first free spot as for [Tap] with no zone. The sheet holds its request itself.
+     */
+    data object PinSheet : WidgetAddTarget
 }
 
 /** How a widget add ended. */
@@ -49,6 +55,7 @@ object WidgetAddCodec {
     private const val TAP = "tap"
     private const val DROP = "drop"
     private const val PIN = "pin"
+    private const val PIN_SHEET = "pin_sheet"
     private const val ADDED = "added"
     private const val NO_ROOM = "no_room"
     private const val TOO_LARGE = "too_large"
@@ -59,6 +66,7 @@ object WidgetAddCodec {
             is WidgetAddTarget.Tap -> line(listOf(TAP) + target.zone?.words().orEmpty())
             is WidgetAddTarget.Drop -> line(listOf(DROP) + target.drop.words())
             is WidgetAddTarget.Pin -> line(listOf(PIN, target.handle) + target.drop.words())
+            WidgetAddTarget.PinSheet -> PIN_SHEET
         }
 
     fun target(encoded: String?): WidgetAddTarget? {
@@ -70,6 +78,7 @@ object WidgetAddCodec {
                 val handle = read.word()?.toLongOrNull() ?: return null
                 read.drop()?.let { WidgetAddTarget.Pin(handle, it) }
             }
+            PIN_SHEET -> WidgetAddTarget.PinSheet
             else -> null
         }?.takeIf { read.done }
     }

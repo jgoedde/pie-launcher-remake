@@ -33,6 +33,7 @@ class WidgetAddCodecTest {
     fun `a widget Pin Request dragged in from the pin sheet survives the trip as its handle`() {
         roundTrip(WidgetAddTarget.Pin(handle = 42L, drop))
         roundTrip(WidgetAddTarget.Pin(handle = Long.MAX_VALUE, drop))
+        roundTrip(WidgetAddTarget.PinSheet)
     }
 
     @Test
