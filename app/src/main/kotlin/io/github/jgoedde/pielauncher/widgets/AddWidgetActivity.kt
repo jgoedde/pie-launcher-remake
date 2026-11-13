@@ -1,9 +1,7 @@
 package io.github.jgoedde.pielauncher.widgets
 
-import android.app.ActivityOptions
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
-import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,14 +14,12 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.lifecycle.lifecycleScope
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.core.home.CellSpan
-import io.github.jgoedde.pielauncher.core.home.LayoutResult
-import io.github.jgoedde.pielauncher.core.home.PagePlacement
-import io.github.jgoedde.pielauncher.core.home.PageZone
-import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.WidgetAddCodec
+import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow
+import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow.Effect
+import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow.Event
 import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
 import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
-import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import kotlinx.coroutines.launch
 
 /**
@@ -62,33 +58,21 @@ class AddWidgetContract : ActivityResultContract<AddWidgetRequest, WidgetAddOutc
 }
 
 /**
- * The widget-add trampoline (PRD 7.4), invisible: the launcher binds the widget itself. Finds
- * the spot first (so nothing is bound or configured that cannot go anywhere) → allocate an id →
- * `bindAppWidgetIdIfAllowed` with the size options of the target span, else the system
- * `ACTION_APPWIDGET_BIND` dialog → a placeholder in the target cells → configure unless the
- * provider makes it optional and reconfigurable → place. Any cancel or failure deletes the id
- * and removes the placeholder. A pinned widget is never configured by the launcher; its Pin
- * Request is accepted with the size options and the widget id once it is placed.
+ * The widget-add trampoline (PRD 7.4), invisible: the launcher binds the widget itself. It runs
+ * the effects of a [WidgetAddFlow] and reports back what happened; the flow decides every step.
+ * Its state is kept in the saved state, so a bind dialog's or configure screen's result finds it
+ * after a recreate or process death.
  */
 @Suppress("DEPRECATION") // startAppWidgetConfigureActivityForResult only reports to onActivityResult.
 class AddWidgetActivity : ComponentActivity() {
     private val graph by lazy { (application as PieLauncherApplication).graph }
     private val widgets by lazy { graph.widgetHost }
-    private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
 
-    private val target: WidgetAddTarget? by lazy { WidgetAddCodec.target(intent.getStringExtra(AddWidgetContract.EXTRA_TARGET)) }
+    /** Null while the request could not be read: then this activity only finishes. */
+    private var flow: WidgetAddFlow? = null
 
-    /** The long-pressed zone a tap-add tries first; null: the Home Page, upper zone first. */
-    private val first: PageZone? get() = (target as? WidgetAddTarget.Tap)?.zone
-
-    /** Where the widget was dropped, when it was dragged onto Home; null for tap-add. */
-    private val drop: WidgetDrop?
-        get() =
-            when (val target = target) {
-                is WidgetAddTarget.Drop -> target.drop
-                is WidgetAddTarget.Pin -> target.drop
-                is WidgetAddTarget.Tap, null -> null
-            }
+    /** The provider being added. */
+    private var info: AppWidgetProviderInfo? = null
 
     /**
      * The widget Pin Request this add answers (dragged in from the pin sheet); null for the Widget
@@ -99,37 +83,31 @@ class AddWidgetActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState != null) {
-            // Recreated while a system screen is up: its result is still on the way.
-            widgetId = savedInstanceState.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-            pin = savedInstanceState.getParcelable(STATE_PIN, LauncherApps.PinItemRequest::class.java)
-            return
-        }
-        pin = (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.take(it.handle) }
+        val target = WidgetAddCodec.target(intent.getStringExtra(AddWidgetContract.EXTRA_TARGET))
+        pin =
+            if (savedInstanceState != null) {
+                savedInstanceState.getParcelable(STATE_PIN, LauncherApps.PinItemRequest::class.java)
+            } else {
+                (target as? WidgetAddTarget.Pin)?.let { WidgetDragHandOff.pins.take(it.handle) }
+            }
         val provider = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROVIDER, ComponentName::class.java)
         val profile = intent.getParcelableExtra(AddWidgetContract.EXTRA_PROFILE, UserHandle::class.java)
-        val info =
+        info =
             when {
                 pin != null -> pin?.takeIf { it.isValid }?.getAppWidgetProviderInfo(this)
                 provider != null && profile != null -> widgets.provider(provider, profile)
                 else -> null
             }
-        if (target == null || info == null) return finishWith(WidgetAddOutcome.Cancelled)
-        lifecycleScope.launch { bind(info) }
-    }
-
-    private suspend fun bind(info: AppWidgetProviderInfo) {
-        val placement = spotFor(info)
-        val spot = placement.result
-        if (spot !is LayoutResult.Changed) return finishWith(spot.outcome())
-        widgetId = widgets.allocateId()
-        val ask = widgets.bindOrAsk(widgetId, info, widgets.sizeOptionsFor(spot.widget.cells.span, this)) ?: return onBound()
-        startActivityForResult(ask, REQUEST_BIND)
+        if (target == null) return finishWith(WidgetAddOutcome.Cancelled)
+        val saved = WidgetAddFlow.State.decode(savedInstanceState?.getString(STATE_FLOW))
+        val flow = WidgetAddFlow(target, info?.addable(), saved ?: WidgetAddFlow.State.Start)
+        this.flow = flow
+        perform(flow.start())
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(STATE_ID, widgetId)
+        flow?.let { outState.putString(STATE_FLOW, it.state.encode()) }
         outState.putParcelable(STATE_PIN, pin)
     }
 
@@ -140,75 +118,69 @@ class AddWidgetActivity : ComponentActivity() {
         data: Intent?,
     ) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK) return finishWith(WidgetAddOutcome.Cancelled)
         when (requestCode) {
-            REQUEST_BIND -> onBound()
-            REQUEST_CONFIGURE -> onConfigured()
+            REQUEST_BIND -> send(Event.BindAnswered(granted = resultCode == RESULT_OK))
+            REQUEST_CONFIGURE -> send(Event.Configured(ok = resultCode == RESULT_OK))
         }
     }
 
-    private fun onBound() {
-        val info = widgets.info(widgetId) ?: return finishWith(WidgetAddOutcome.Cancelled)
-        // The platform contract: the launcher never configures a pinned widget (the app does).
-        if (pin != null || !info.needsConfigure()) return onConfigured()
-        lifecycleScope.launch {
-            // The spot may have been taken while the bind dialog was up.
-            val placement = spotFor(info)
-            val spot = placement.result
-            val page = placement.zone?.page
-            if (spot !is LayoutResult.Changed || page == null) return@launch finishWith(spot.outcome())
-            widgets.showPending(widgetId, info, page, spot.widget, spot.moved)
-            configure()
-        }
+    /** Home clears the launcher task, destroying this activity without a result: that is a cancel too. */
+    override fun onDestroy() {
+        if (isFinishing) send(Event.Destroyed)
+        super.onDestroy()
     }
 
-    private fun configure() {
-        // The configure IntentSender carries no background-start rights of its own; the visible launcher grants them.
-        val options =
-            ActivityOptions
-                .makeBasic()
-                .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
-                .toBundle()
-        try {
-            widgets.startConfigure(this, widgetId, REQUEST_CONFIGURE, options)
-        } catch (e: ActivityNotFoundException) {
-            Log.w(TAG, "Configure activity missing for widget $widgetId", e)
-            finishWith(WidgetAddOutcome.Cancelled)
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Configure activity not allowed for widget $widgetId", e)
-            finishWith(WidgetAddOutcome.Cancelled)
-        }
+    private fun send(event: Event) {
+        flow?.let { perform(it.on(event)) }
     }
 
-    private fun onConfigured() {
-        // Gone when the process died meanwhile and the startup reconcile deleted the unplaced id.
-        if (widgets.info(widgetId) == null) return finishWith(WidgetAddOutcome.Cancelled)
-        lifecycleScope.launch {
-            val zones = graph.homeGeometry.zones(this@AddWidgetActivity)
-            val placement = drop?.let { widgets.place(widgetId, it, zones) } ?: widgets.place(widgetId, first, zones)
-            val placed = placement.result
-            val page = placement.zone?.page
-            if (placed !is LayoutResult.Changed || page == null) return@launch finishWith(placed.outcome())
-            val request = pin
-            if (request != null && !accept(request, placed.widget.cells.span)) {
-                widgets.remove(widgetId)
-                widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-                return@launch finishWith(WidgetAddOutcome.Cancelled)
+    private fun perform(effects: List<Effect>) = effects.forEach(::perform)
+
+    private fun perform(effect: Effect) {
+        when (effect) {
+            is Effect.FindSpot -> {
+                val info = info ?: return send(Event.IdGone)
+                val bound = effect.id
+                if (bound != null && widgets.info(bound) == null) return send(Event.IdGone)
+                lifecycleScope.launch { send(Event.SpotFound(widgets.findSpot(info, effect.target, zones()))) }
             }
-            finishWith(WidgetAddOutcome.Added(widgetId, page))
+            is Effect.Bind -> {
+                val info = info ?: return
+                val id = widgets.allocateId()
+                val ask = widgets.bindOrAsk(id, info, widgets.sizeOptionsFor(effect.span, this))
+                if (ask == null) return send(Event.Bound(id))
+                send(Event.AskingToBind(id))
+                startActivityForResult(ask, REQUEST_BIND)
+            }
+            is Effect.ShowPending -> {
+                val info = info ?: return
+                widgets.showPending(effect.id, info, effect.page, effect.spot.widget, effect.spot.moved)
+            }
+            is Effect.Configure ->
+                if (!widgets.startConfigure(this, effect.id, REQUEST_CONFIGURE)) send(Event.Configured(ok = false))
+            is Effect.Place -> {
+                if (widgets.info(effect.id) == null) return send(Event.IdGone)
+                lifecycleScope.launch { send(Event.Placed(widgets.place(effect.id, effect.target, zones()))) }
+            }
+            is Effect.Accept -> send(Event.Accepted(accept(effect.id, effect.span)))
+            is Effect.DeleteUnplaced -> {
+                widgets.clearPending(effect.id)
+                widgets.deleteId(effect.id)
+            }
+            // In the app scope: this activity finishes right after.
+            is Effect.RemovePlaced -> widgets.discard(effect.id)
+            is Effect.Finish -> finishWith(effect.outcome)
         }
     }
 
-    /**
-     * Accepts the Pin Request [request] for the placed widget at [span], with its size options and
-     * id. Placed first, so the requesting app never hears "added" for a widget that found no room.
-     */
+    /** Accepts the Pin Request for placed widget [id] at [span], with its size options and id. */
     private fun accept(
-        request: LauncherApps.PinItemRequest,
+        id: Int,
         span: CellSpan,
     ): Boolean {
+        val request = pin ?: return false
         val options = widgets.sizeOptionsFor(span, this)
-        options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
         return try {
             request.isValid && request.accept(options)
         } catch (e: IllegalStateException) {
@@ -217,43 +189,16 @@ class AddWidgetActivity : ComponentActivity() {
         }
     }
 
-    /** Where the widget of [info] goes: where it was dropped, else the first free spot from [first] on. */
-    private suspend fun spotFor(info: AppWidgetProviderInfo): PagePlacement {
-        val zones = graph.homeGeometry.zones(this)
-        return drop?.let { widgets.findSpot(info, it, zones) } ?: widgets.findSpot(info, first, zones)
-    }
-
-    /** Home clears the launcher task, destroying this activity without a result: that is a cancel too. */
-    override fun onDestroy() {
-        if (isFinishing) discard()
-        super.onDestroy()
-    }
+    private fun zones() = graph.homeGeometry.zones(this)
 
     private fun finishWith(outcome: WidgetAddOutcome) {
-        if (outcome !is WidgetAddOutcome.Added) discard()
-        widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
         setResult(RESULT_OK, Intent().putExtra(AddWidgetContract.EXTRA_OUTCOME, WidgetAddCodec.encode(outcome)))
         finish()
     }
 
-    /** Deletes the unplaced id and its placeholder. */
-    private fun discard() {
-        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
-        widgets.clearPending(widgetId)
-        widgets.deleteId(widgetId)
-        widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-    }
-
-    private fun LayoutResult.outcome(): WidgetAddOutcome =
-        when ((this as? LayoutResult.Rejected)?.reason) {
-            Rejection.TooLarge -> WidgetAddOutcome.TooLarge
-            null -> WidgetAddOutcome.Cancelled
-            else -> WidgetAddOutcome.NoRoom
-        }
-
     private companion object {
         const val TAG = "AddWidgetActivity"
-        const val STATE_ID = "widget_id"
+        const val STATE_FLOW = "flow"
         const val STATE_PIN = "pin"
         const val REQUEST_BIND = 2
         const val REQUEST_CONFIGURE = 3

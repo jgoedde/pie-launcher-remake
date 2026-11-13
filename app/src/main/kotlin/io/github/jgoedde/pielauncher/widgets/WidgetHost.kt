@@ -1,10 +1,12 @@
 package io.github.jgoedde.pielauncher.widgets
 
 import android.app.Activity
+import android.app.ActivityOptions
 import android.app.Application
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,6 +18,7 @@ import android.widget.RemoteViews
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import io.github.jgoedde.pielauncher.core.home.AddableWidget
 import io.github.jgoedde.pielauncher.core.home.CatalogGrid
 import io.github.jgoedde.pielauncher.core.home.CellSpan
 import io.github.jgoedde.pielauncher.core.home.HomeZones
@@ -28,8 +31,8 @@ import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.ProviderSizes
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
-import io.github.jgoedde.pielauncher.core.home.WidgetConfigure
 import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
 import io.github.jgoedde.pielauncher.core.home.WidgetReconcile
@@ -196,13 +199,33 @@ class WidgetHost(
         id: Int,
     ): AppWidgetHostView = host.createView(context, id, info(id))
 
-    /** Starts the provider's configure activity for [id]; the result arrives in [activity]'s `onActivityResult`. */
+    /**
+     * Starts the provider's configure activity for widget [id], on add and from Edit Mode's
+     * "Widget settings"; the result arrives in [activity]'s `onActivityResult` with [requestCode].
+     * False when it cannot start.
+     */
     fun startConfigure(
         activity: Activity,
         id: Int,
         requestCode: Int,
-        options: Bundle?,
-    ) = host.startAppWidgetConfigureActivityForResult(activity, id, 0, requestCode, options)
+    ): Boolean {
+        // The configure IntentSender carries no background-start rights of its own; the visible launcher grants them.
+        val options =
+            ActivityOptions
+                .makeBasic()
+                .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
+                .toBundle()
+        return try {
+            host.startAppWidgetConfigureActivityForResult(activity, id, 0, requestCode, options)
+            true
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "Configure activity missing for widget $id", e)
+            false
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Configure activity not allowed for widget $id", e)
+            false
+        }
+    }
 
     /**
      * The Widget Layouts of all Pages: [rows] on [zones], with each provider's span bounds. There
@@ -222,6 +245,30 @@ class WidgetHost(
             }
         }
     }
+
+    /** Where a widget of [info] would go at [target]: where it was dropped, else the first free spot from the tapped zone on. */
+    suspend fun findSpot(
+        info: AppWidgetProviderInfo,
+        target: WidgetAddTarget,
+        zones: HomeZones,
+    ): PagePlacement =
+        when (target) {
+            is WidgetAddTarget.Tap -> findSpot(info, target.zone, zones)
+            is WidgetAddTarget.Drop -> findSpot(info, target.drop, zones)
+            is WidgetAddTarget.Pin -> findSpot(info, target.drop, zones)
+        }
+
+    /** Places the bound widget [id] at [target], as [findSpot] would; nothing is recorded on a rejection. */
+    suspend fun place(
+        id: Int,
+        target: WidgetAddTarget,
+        zones: HomeZones,
+    ): PagePlacement =
+        when (target) {
+            is WidgetAddTarget.Tap -> place(id, target.zone, zones)
+            is WidgetAddTarget.Drop -> place(id, target.drop, zones)
+            is WidgetAddTarget.Pin -> place(id, target.drop, zones)
+        }
 
     /** Where a widget of [info] would go: [first], else the first Page zone with room, else a new Page ([PageLayouts.add]). */
     suspend fun findSpot(
@@ -339,7 +386,10 @@ class WidgetHost(
         if (moves.isNotEmpty()) dao.insertAll(rows.mapNotNull { row -> moves[row.appWidgetId]?.let { row.copy(page = it) } })
     }
 
-    /** Deletes the removed widget [id] for good once its undo window is over (PRD 7.5): row and id. */
+    /**
+     * Deletes placed widget [id] for good, row and id, in the app scope: once its undo window is
+     * over (PRD 7.5), or when its Pin Request cannot be accepted.
+     */
     fun discard(id: Int) {
         appScope.launch { remove(id) }
     }
@@ -366,9 +416,9 @@ class WidgetHost(
     }
 }
 
-/** Whether adding this widget runs its configure activity (PRD 7.4). */
-internal fun AppWidgetProviderInfo.needsConfigure(): Boolean =
-    WidgetConfigure.isNeeded(
+/** What the widget add flow needs to know of this provider (PRD 7.4). */
+internal fun AppWidgetProviderInfo.addable(): AddableWidget =
+    AddableWidget(
         hasConfigureActivity = configure != null,
         configurationOptional = widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL != 0,
         reconfigurable = widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0,
