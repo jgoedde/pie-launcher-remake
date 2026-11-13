@@ -1,6 +1,5 @@
 package io.github.jgoedde.pielauncher.home
 
-import android.app.ActivityOptions
 import android.app.WallpaperColors
 import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
@@ -431,19 +430,7 @@ class HomeActivity : ComponentActivity() {
 
         /** Reopens the configure screen (PRD 7.2); its result does not matter: a cancel keeps the widget as it was. */
         override fun reconfigure(id: Int) {
-            // The configure IntentSender carries no background-start rights of its own; the visible launcher grants them.
-            val options =
-                ActivityOptions
-                    .makeBasic()
-                    .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
-                    .toBundle()
-            try {
-                graph.widgetHost.startConfigure(this@HomeActivity, id, REQUEST_RECONFIGURE, options)
-            } catch (e: ActivityNotFoundException) {
-                Log.w(TAG, "Configure activity missing for widget $id", e)
-            } catch (e: SecurityException) {
-                Log.w(TAG, "Configure activity not allowed for widget $id", e)
-            }
+            graph.widgetHost.startConfigure(this@HomeActivity, id, REQUEST_RECONFIGURE)
         }
 
         override fun rejected(reason: Rejection) {
