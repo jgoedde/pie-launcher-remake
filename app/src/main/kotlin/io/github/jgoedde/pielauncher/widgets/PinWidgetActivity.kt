@@ -68,7 +68,6 @@ class PinWidgetActivity : ComponentActivity() {
 
     private var request: LauncherApps.PinItemRequest? = null
     private var runner: WidgetAddRunner? = null
-    private var flow: WidgetAddFlow? = null
 
     /** The sheet's content once the flow has offered "Add to home screen". */
     private var sheet by mutableStateOf<PinSheetContent?>(null)
@@ -82,11 +81,10 @@ class PinWidgetActivity : ComponentActivity() {
         request = pin
 
         val grid = graph.homeGeometry.catalogGrid(this)
-        val saved = WidgetAddFlow.State.decode(savedInstanceState?.getString(STATE_FLOW))
-        val flow = WidgetAddFlow(WidgetAddTarget.PinSheet, info.addable(), saved ?: WidgetAddFlow.State.Start)
-        this.flow = flow
         runner =
-            WidgetAddRunner(this, flow, info, pin, onOffer = { sheet = load(info, grid, it) }, onFinish = { finishWith(info, it) })
+            WidgetAddRunner(this, WidgetAddTarget.PinSheet, savedInstanceState, info, pin, onOffer = {
+                sheet = load(info, grid, it)
+            }, onFinish = { finishWith(info, it) })
                 .also { it.start() }
         lifecycleScope.launch {
             val spans = widgets.spans(info, grid)
@@ -120,7 +118,7 @@ class PinWidgetActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        flow?.let { outState.putString(STATE_FLOW, it.state.encode()) }
+        runner?.save(outState)
     }
 
     @Deprecated("Deprecated in Java")
@@ -138,7 +136,7 @@ class PinWidgetActivity : ComponentActivity() {
         runner?.send(WidgetAddFlow.Event.AddChosen)
     }
 
-    /** The add ended: say so, unless declined (the requesting app hears nothing then). */
+    /** The add ended: say how, unless it was cancelled (the requesting app hears nothing then). */
     private fun finishWith(
         info: AppWidgetProviderInfo,
         outcome: WidgetAddOutcome,
@@ -182,10 +180,6 @@ class PinWidgetActivity : ComponentActivity() {
     override fun onDestroy() {
         runner?.onDestroy()
         super.onDestroy()
-    }
-
-    private companion object {
-        const val STATE_FLOW = "flow"
     }
 }
 

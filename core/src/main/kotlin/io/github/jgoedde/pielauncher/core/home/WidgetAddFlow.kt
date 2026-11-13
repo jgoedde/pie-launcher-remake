@@ -11,10 +11,10 @@ data class AddableWidget(
 }
 
 /**
- * The widget add flow (PRD 7.4) behind the add trampoline: find the spot first (nothing is bound
+ * The widget add flow (PRD 7.4) behind the add trampoline and the pin sheet: find the spot first (nothing is bound
  * or configured that cannot go anywhere) → allocate an id and bind → configure if needed, with the
  * pending preview in the target cells → place, re-checking the spot → accept the Pin Request, if
- * any, only once placed. Driven by [Event]s, it answers with [Effect]s for the trampoline to run.
+ * any, only once placed. Driven by [Event]s, it answers with [Effect]s for its host to run.
  * Every exit but [WidgetAddOutcome.Added] deletes the unplaced id and its pending preview.
  *
  * For the pin sheet ([WidgetAddTarget.PinSheet]) the spot found is the sheet's "Add to home
@@ -35,7 +35,7 @@ class WidgetAddFlow(
 
     /**
      * The effects that start the flow, or pick it up after a recreate: a lookup or placement whose
-     * coroutine died with the old trampoline runs again; a system screen's result is still on the way.
+     * coroutine died with the old host runs again; a system screen's result is still on the way.
      */
     fun start(): List<Effect> =
         when (val state = state) {
@@ -138,7 +138,8 @@ class WidgetAddFlow(
         val add =
             when (spot) {
                 is LayoutResult.Changed -> PinAdd.Ready(spot.widget.cells.span)
-                else -> PinAdd.Disabled(if (spot.outcome() == WidgetAddOutcome.TooLarge) Rejection.TooLarge else Rejection.NoRoom)
+                is LayoutResult.Rejected -> PinAdd.Disabled(if (spot.reason == Rejection.TooLarge) Rejection.TooLarge else Rejection.NoRoom)
+                LayoutResult.Unchanged -> PinAdd.Disabled(Rejection.NoRoom)
             }
         state = State.Offering(add)
         return listOf(Effect.Offer(add))
@@ -263,7 +264,7 @@ class WidgetAddFlow(
         data object Done : State
     }
 
-    /** What happened, as the trampoline reports it. */
+    /** What happened, as the host reports it. */
     sealed interface Event {
         /** The user chose the pin sheet's "Add to home screen". */
         data object AddChosen : Event
@@ -304,11 +305,11 @@ class WidgetAddFlow(
         /** The widget id is no longer bound (the process died and the startup reconcile deleted it). */
         data object IdGone : Event
 
-        /** The trampoline was destroyed without finishing (Home cleared the launcher task). */
+        /** The host was destroyed without finishing (declined, or Home cleared the launcher task). */
         data object Destroyed : Event
     }
 
-    /** What the trampoline does next; each answers with the [Event] its doc names. */
+    /** What the host does next; each answers with the [Event] its doc names. */
     sealed interface Effect {
         /**
          * Look up where a widget of the provider would go at [target]: [Event.SpotFound]. With the
@@ -366,7 +367,7 @@ class WidgetAddFlow(
             val id: Int,
         ) : Effect
 
-        /** End the trampoline with [outcome]. */
+        /** End the add with [outcome]. */
         data class Finish(
             val outcome: WidgetAddOutcome,
         ) : Effect

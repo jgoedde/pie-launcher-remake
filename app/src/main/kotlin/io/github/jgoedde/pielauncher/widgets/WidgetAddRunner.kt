@@ -4,6 +4,7 @@ import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.pm.LauncherApps
+import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -14,18 +15,22 @@ import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow
 import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow.Effect
 import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow.Event
 import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import kotlinx.coroutines.launch
 
 /**
  * Runs the effects of a [WidgetAddFlow] (PRD 7.4) for [activity], which hosts the add: the add
  * trampoline, or the pin sheet. It binds, configures, places and accepts the Pin Request; showing
  * the pin sheet ([onOffer]) and ending the add ([onFinish]) are the host's. The host forwards
- * [onActivityResult] and [onDestroy], and keeps [WidgetAddFlow.state] in its saved state.
+ * [onActivityResult], [onDestroy] and [save]; the flow's state comes back from [saved], so a
+ * system screen's result finds the flow after a recreate or process death.
  */
 @Suppress("DEPRECATION") // startAppWidgetConfigureActivityForResult only reports to onActivityResult.
 class WidgetAddRunner(
     private val activity: ComponentActivity,
-    private val flow: WidgetAddFlow,
+    target: WidgetAddTarget,
+    /** The host's saved state, if it is being recreated. */
+    saved: Bundle?,
     /** The provider being added; null when it or the Pin Request is gone. */
     private val info: AppWidgetProviderInfo?,
     /** The widget Pin Request this add answers, if any. */
@@ -35,22 +40,24 @@ class WidgetAddRunner(
 ) {
     private val graph by lazy { (activity.application as PieLauncherApplication).graph }
     private val widgets by lazy { graph.widgetHost }
+    private val flow =
+        WidgetAddFlow(target, info?.addable(), WidgetAddFlow.State.decode(saved?.getString(STATE_FLOW)) ?: WidgetAddFlow.State.Start)
 
     fun start() = perform(flow.start())
 
     fun send(event: Event) = perform(flow.on(event))
 
-    /** A bind dialog's or configure screen's result; false when [requestCode] is not one. */
+    fun save(outState: Bundle) = outState.putString(STATE_FLOW, flow.state.encode())
+
+    /** A bind dialog's or configure screen's result. */
     fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
-    ): Boolean {
+    ) {
         when (requestCode) {
             REQUEST_BIND -> send(Event.BindAnswered(granted = resultCode == Activity.RESULT_OK))
             REQUEST_CONFIGURE -> send(Event.Configured(ok = resultCode == Activity.RESULT_OK))
-            else -> return false
         }
-        return true
     }
 
     /** Home clears the launcher task, destroying the host without a result: that is a cancel too. */
@@ -118,6 +125,7 @@ class WidgetAddRunner(
 
     private companion object {
         const val TAG = "WidgetAddRunner"
+        const val STATE_FLOW = "flow"
         const val REQUEST_BIND = 2
         const val REQUEST_CONFIGURE = 3
     }

@@ -60,7 +60,6 @@ class AddWidgetActivity : ComponentActivity() {
 
     /** Null while the request could not be read: then this activity only finishes. */
     private var runner: WidgetAddRunner? = null
-    private var flow: WidgetAddFlow? = null
 
     /**
      * The widget Pin Request this add answers (dragged in from the pin sheet); null for the Widget
@@ -87,15 +86,12 @@ class AddWidgetActivity : ComponentActivity() {
                 else -> null
             }
         if (target == null) return finishWith(WidgetAddOutcome.Cancelled)
-        val saved = WidgetAddFlow.State.decode(savedInstanceState?.getString(STATE_FLOW))
-        val flow = WidgetAddFlow(target, info?.addable(), saved ?: WidgetAddFlow.State.Start)
-        this.flow = flow
-        runner = WidgetAddRunner(this, flow, info, pin, onFinish = ::finishWith).also { it.start() }
+        runner = WidgetAddRunner(this, target, savedInstanceState, info, pin, onFinish = ::finishWith).also { it.start() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        flow?.let { outState.putString(STATE_FLOW, it.state.encode()) }
+        runner?.save(outState)
         outState.putParcelable(STATE_PIN, pin)
     }
 
@@ -120,7 +116,6 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private companion object {
-        const val STATE_FLOW = "flow"
         const val STATE_PIN = "pin"
     }
 }
