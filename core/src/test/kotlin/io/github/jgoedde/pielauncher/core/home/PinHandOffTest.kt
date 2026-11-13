@@ -16,6 +16,16 @@ class PinHandOffTest {
     }
 
     @Test
+    fun `peeking leaves the Pin Request held`() {
+        val handOff = PinHandOff<String>()
+        val token = handOff.hold("request")
+
+        assertEquals("request", handOff.peek(token))
+        assertEquals("request", handOff.take(token))
+        assertNull(handOff.peek(token))
+    }
+
+    @Test
     fun `two held Pin Requests get their own tokens`() {
         val handOff = PinHandOff<String>()
 

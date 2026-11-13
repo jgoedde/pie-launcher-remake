@@ -168,12 +168,7 @@ class WidgetAddFlow(
         return listOf(Effect.Finish(outcome))
     }
 
-    private fun LayoutResult.outcome(): WidgetAddOutcome =
-        when ((this as? LayoutResult.Rejected)?.reason) {
-            Rejection.TooLarge -> WidgetAddOutcome.TooLarge
-            null -> WidgetAddOutcome.Cancelled
-            else -> WidgetAddOutcome.NoRoom
-        }
+    private fun LayoutResult.outcome(): WidgetAddOutcome = (this as? LayoutResult.Rejected)?.reason?.outcome ?: WidgetAddOutcome.Cancelled
 
     /** Where the flow is; [encode] it into the saved state, so a system screen's result finds the flow after process death. */
     sealed interface State {

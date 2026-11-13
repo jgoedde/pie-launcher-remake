@@ -15,6 +15,7 @@ import android.view.View
 import io.github.jgoedde.pielauncher.core.home.PinHandOff
 import io.github.jgoedde.pielauncher.core.home.SpanBounds
 import io.github.jgoedde.pielauncher.core.home.WidgetAddCodec
+import io.github.jgoedde.pielauncher.core.home.WidgetDragCarry
 
 /**
  * What a widget drag onto Home carries (ADR 0006): the system drag-and-drop hand-off from the
@@ -34,13 +35,22 @@ sealed interface WidgetDragPayload {
     data class Pin(
         val token: Long,
     ) : WidgetDragPayload
+
+    /** What `:core` needs of this payload. */
+    val carry: WidgetDragCarry
+        get() =
+            when (this) {
+                is Provider -> WidgetDragCarry.Provider
+                is Pin -> WidgetDragCarry.Pin(token)
+            }
 }
 
 /**
  * The widget drag hand-off over system drag-and-drop (Launcher3 `DragAndDrop.startDrag`): a
  * global drag with the launcher's own MIME type. The ClipDescription carries the widget's span
  * bounds, so Home can preview the reflow from the drag's start (the ClipData itself only arrives
- * with the drop); the ClipData carries the [WidgetDragPayload] as an Intent.
+ * with the drop), and a Pin Request's token, so Home can release it however the drag ends; the
+ * ClipData carries the [WidgetDragPayload] as an Intent.
  */
 object WidgetDragHandOff {
     /** Only Home accepts drags of this type. */
@@ -70,7 +80,11 @@ object WidgetDragHandOff {
     ): Boolean {
         val description =
             ClipDescription("widget", arrayOf(MIME_TYPE)).apply {
-                extras = PersistableBundle().apply { putString(EXTRA_BOUNDS, WidgetAddCodec.encode(bounds)) }
+                extras =
+                    PersistableBundle().apply {
+                        putString(EXTRA_BOUNDS, WidgetAddCodec.encode(bounds))
+                        if (payload is WidgetDragPayload.Pin) putLong(EXTRA_PIN_TOKEN, payload.token)
+                    }
             }
         val intent =
             when (payload) {
@@ -86,6 +100,13 @@ object WidgetDragHandOff {
         val description = event.clipDescription ?: return null
         if (!description.hasMimeType(MIME_TYPE)) return null
         return WidgetAddCodec.bounds(description.extras?.getString(EXTRA_BOUNDS))
+    }
+
+    /** The token of the Pin Request the widget drag [event] holds; null for a Widget Picker drag or any other. */
+    fun heldPinOf(event: DragEvent): Long? {
+        val description = event.clipDescription ?: return null
+        if (!description.hasMimeType(MIME_TYPE)) return null
+        return description.extras?.takeIf { it.containsKey(EXTRA_PIN_TOKEN) }?.getLong(EXTRA_PIN_TOKEN)
     }
 
     /** What the dropped widget drag [event] carries; null on any other drop. */
