@@ -6,13 +6,11 @@ import android.content.Intent
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,10 +39,11 @@ import androidx.lifecycle.lifecycleScope
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.home.CatalogGrid
-import io.github.jgoedde.pielauncher.core.home.LayoutResult
 import io.github.jgoedde.pielauncher.core.home.PinAdd
-import io.github.jgoedde.pielauncher.core.home.PinSheet
 import io.github.jgoedde.pielauncher.core.home.Rejection
+import io.github.jgoedde.pielauncher.core.home.WidgetAddFlow
+import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
+import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
 import io.github.jgoedde.pielauncher.core.home.WidgetCatalog
 import io.github.jgoedde.pielauncher.core.home.WidgetSpans
 import io.github.jgoedde.pielauncher.home.PieLauncherTheme
@@ -56,33 +55,23 @@ import kotlin.math.roundToInt
  * sheet titled with the app's name and the hint "Touch and hold to move a widget.", the widget's
  * preview card (an app-supplied preview wins), "Cancel" and "Add to home screen".
  *
- * "Add to home screen" binds the widget (the system bind dialog when not allow-listed; a
- * cancelled bind keeps the sheet), places it at the first free spot of the Home Page, upper
- * Widget Zone first, then of the other Pages, else on a new Page, and accepts the request with
- * the size options and the widget id. It is disabled with the reason when the widget is too
- * large, known before the sheet shows. Touch and hold on the preview drags the widget onto Home instead, which binds,
- * places and accepts it on drop. The launcher never configures a pinned widget.
+ * "Add to home screen" runs the widget add flow ([WidgetAddTarget.PinSheet], via a
+ * [WidgetAddRunner]): the spot it finds before the sheet shows enables Add, or disables it with
+ * the reason; Add binds (a cancelled bind dialog keeps the sheet), places at the first free spot
+ * of the Home Page, upper Widget Zone first, then of the other Pages, else on a new Page, and
+ * accepts the request. Touch and hold on the preview drags the widget onto Home instead, whose
+ * drop runs the same flow. The launcher never configures a pinned widget.
  */
 class PinWidgetActivity : ComponentActivity() {
     private val graph by lazy { (application as PieLauncherApplication).graph }
     private val widgets by lazy { graph.widgetHost }
 
     private var request: LauncherApps.PinItemRequest? = null
-    private var pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
+    private var runner: WidgetAddRunner? = null
 
-    /** The sheet's content once spans and the spot are known. */
+    /** The sheet's content once the flow has offered "Add to home screen". */
     private var sheet by mutableStateOf<PinSheetContent?>(null)
     private var preview by mutableStateOf<PreviewContent?>(null)
-
-    private val bind =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                accept()
-            } else {
-                // Launcher3: the id goes, the sheet stays.
-                deletePending()
-            }
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,13 +79,13 @@ class PinWidgetActivity : ComponentActivity() {
         if (pin == null || pin.requestType != LauncherApps.PinItemRequest.REQUEST_TYPE_APPWIDGET || !pin.isValid) return finish()
         val info = pin.getAppWidgetProviderInfo(this) ?: return finish()
         request = pin
-        pendingId = savedInstanceState?.getInt(STATE_ID, AppWidgetManager.INVALID_APPWIDGET_ID) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
         val grid = graph.homeGeometry.catalogGrid(this)
-        lifecycleScope.launch {
-            val spot = widgets.findSpot(info, first = null, graph.homeGeometry.zones(this@PinWidgetActivity))
-            sheet = load(info, grid, PinSheet.add(spot.result))
-        }
+        runner =
+            WidgetAddRunner(this, WidgetAddTarget.PinSheet, savedInstanceState, info, pin, onOffer = {
+                sheet = load(info, grid, it)
+            }, onFinish = { finishWith(info, it) })
+                .also { it.start() }
         lifecycleScope.launch {
             val spans = widgets.spans(info, grid)
             val widthPx = (WidgetCatalog.sizeList(spans.default, grid).first().width * resources.displayMetrics.density).roundToInt()
@@ -105,7 +94,7 @@ class PinWidgetActivity : ComponentActivity() {
         }
         setContent {
             PieLauncherTheme {
-                sheet?.let { PinWidgetSheet(it, preview, onAdd = ::add, onPickUp = ::pickUp, onDismiss = ::cancel) }
+                sheet?.let { PinWidgetSheet(it, preview, onAdd = ::add, onPickUp = ::pickUp, onDismiss = ::finish) }
             }
         }
     }
@@ -129,55 +118,48 @@ class PinWidgetActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(STATE_ID, pendingId)
+        runner?.save(outState)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        runner?.onActivityResult(requestCode, resultCode)
     }
 
     private fun add() {
-        val info = request?.getAppWidgetProviderInfo(this) ?: return cancel()
-        // The widget's size at the spot the sheet found, so it lays out right from its first update.
-        val ready = sheet?.add as? PinAdd.Ready ?: return
-        pendingId = widgets.allocateId()
-        val ask = widgets.bindOrAsk(pendingId, info, widgets.sizeOptionsFor(ready.span, this)) ?: return accept()
-        bind.launch(ask)
+        runner?.send(WidgetAddFlow.Event.AddChosen)
     }
 
-    /**
-     * Places the bound widget first and accepts the request only once it has a spot, so the
-     * requesting app never hears "added" for a widget that found no room.
-     */
-    private fun accept() {
-        val pin = request ?: return cancel()
-        val id = pendingId
-        val label = sheet?.label
-        lifecycleScope.launch {
-            val placed = widgets.place(id, first = null, graph.homeGeometry.zones(this@PinWidgetActivity)).result
-            if (placed !is LayoutResult.Changed) {
-                Toast.makeText(application, R.string.widget_no_space, Toast.LENGTH_SHORT).show()
-                return@launch cancel()
-            }
-            val options = widgets.sizeOptionsFor(placed.widget.cells.span, this@PinWidgetActivity)
-            options.putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            val accepted =
-                try {
-                    pin.isValid && pin.accept(options)
-                } catch (e: IllegalStateException) {
-                    Log.w(TAG, "Cannot accept widget Pin Request", e)
-                    false
-                }
-            pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
-            if (accepted) {
-                Toast.makeText(application, getString(R.string.pin_widget_added, label), Toast.LENGTH_SHORT).show()
-            } else {
-                widgets.remove(id)
-            }
-            finish()
+    /** The add ended: say how, unless it was cancelled (the requesting app hears nothing then). */
+    private fun finishWith(
+        info: AppWidgetProviderInfo,
+        outcome: WidgetAddOutcome,
+    ) {
+        when (outcome) {
+            is WidgetAddOutcome.Added ->
+                Toast.makeText(application, getString(R.string.pin_widget_added, info.loadLabel(packageManager)), Toast.LENGTH_SHORT).show()
+            WidgetAddOutcome.NoRoom, WidgetAddOutcome.TooLarge ->
+                Toast
+                    .makeText(
+                        application,
+                        R.string.widget_no_space,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+            WidgetAddOutcome.Cancelled -> Unit
         }
+        finish()
     }
 
     /**
      * Touch and hold on the preview: a system drag of the widget starts from [view], drawn as
      * [shadow], Home comes to the front and the sheet closes. The request waits in
-     * [WidgetDragHandOff.pins] for Home's drop, which binds, places and accepts it.
+     * [WidgetDragHandOff.pins] for Home's drop, which runs the widget add flow on it.
      */
     private fun pickUp(
         view: View,
@@ -194,26 +176,10 @@ class PinWidgetActivity : ComponentActivity() {
         finish()
     }
 
-    /** Destroyed mid-flow (e.g. by Home) without "Add to home screen" finishing: the bound id must not leak. */
+    /** Destroyed mid-flow (declined, or by Home) without the add finishing: the bound id must not leak. */
     override fun onDestroy() {
-        if (isFinishing) deletePending()
+        runner?.onDestroy()
         super.onDestroy()
-    }
-
-    private fun deletePending() {
-        if (pendingId != AppWidgetManager.INVALID_APPWIDGET_ID) widgets.deleteId(pendingId)
-        pendingId = AppWidgetManager.INVALID_APPWIDGET_ID
-    }
-
-    /** Declining leaves nothing behind (the requesting app hears nothing). */
-    private fun cancel() {
-        deletePending()
-        finish()
-    }
-
-    private companion object {
-        const val TAG = "PinWidgetActivity"
-        const val STATE_ID = "widget_id"
     }
 }
 

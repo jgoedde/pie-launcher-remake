@@ -12,6 +12,7 @@ class WidgetAddFlowTest {
     private val configurable = plain.copy(hasConfigureActivity = true)
     private val tap = WidgetAddTarget.Tap(zone = null)
     private val pin = WidgetAddTarget.Pin(handle = 9, WidgetDrop(HOME_PAGE, HomeUpper, CellRect(0, 0, 2, 1)))
+    private val sheet = WidgetAddTarget.PinSheet
 
     @Test
     fun `a widget the launcher may bind and that needs no configure is placed and added`() {
@@ -142,6 +143,81 @@ class WidgetAddFlowTest {
     }
 
     @Test
+    fun `the pin sheet offers Add at the spot found, and binds nothing until the user adds`() {
+        val home = FakeHome()
+
+        home.start(WidgetAddFlow(sheet, plain))
+
+        assertEquals(PinAdd.Ready(CellSpan(2, 1)), home.offered)
+        assertEquals(0, home.allocations)
+        home.answer(Event.AddChosen)
+
+        assertEquals(listOf(1), home.accepted)
+        assertEquals(WidgetAddOutcome.Added(widgetId = 1, page = HOME_PAGE), home.outcome)
+    }
+
+    @Test
+    fun `cancelling the bind dialog on the pin sheet deletes the id and keeps the sheet`() {
+        val home = FakeHome(bindAllowed = false)
+
+        home.start(WidgetAddFlow(sheet, plain))
+        home.answer(Event.AddChosen)
+        home.offered = null
+        home.answer(Event.BindAnswered(granted = false))
+
+        home.assertLeftNothing(expected = null)
+        assertEquals(PinAdd.Ready(CellSpan(2, 1)), home.offered)
+        home.answer(Event.AddChosen)
+        home.answer(Event.BindAnswered(granted = true))
+        assertEquals(WidgetAddOutcome.Added(widgetId = 2, page = HOME_PAGE), home.outcome)
+    }
+
+    @Test
+    fun `cancelling the bind dialog after a pin sheet drag cancels the add`() {
+        val home = FakeHome(bindAllowed = false)
+
+        home.start(WidgetAddFlow(pin, plain))
+        home.answer(Event.BindAnswered(granted = false))
+
+        home.assertLeftNothing(WidgetAddOutcome.Cancelled)
+    }
+
+    @Test
+    fun `no room once the pin sheet's widget is bound is no room, leaving nothing behind`() {
+        val home = FakeHome(bindAllowed = false)
+
+        home.start(WidgetAddFlow(sheet, plain))
+        home.answer(Event.AddChosen)
+        home.spot = rejected(Rejection.NoRoom)
+        home.answer(Event.BindAnswered(granted = true))
+
+        assertEquals(emptyList<Int>(), home.accepted)
+        home.assertLeftNothing(WidgetAddOutcome.NoRoom)
+    }
+
+    @Test
+    fun `the pin sheet offers Add disabled, saying why, when the widget is too large or finds no room`() {
+        val tooLarge = FakeHome(spot = rejected(Rejection.TooLarge)).apply { start(WidgetAddFlow(sheet, plain)) }
+        val noRoom = FakeHome(spot = rejected(Rejection.NoRoom)).apply { start(WidgetAddFlow(sheet, plain)) }
+        tooLarge.answer(Event.AddChosen)
+
+        assertEquals(PinAdd.Disabled(Rejection.TooLarge), tooLarge.offered)
+        assertEquals(PinAdd.Disabled(Rejection.NoRoom), noRoom.offered)
+        assertEquals(0, tooLarge.allocations)
+        tooLarge.assertLeftNothing(expected = null)
+    }
+
+    @Test
+    fun `a pin sheet recreated while offering looks for the spot again`() {
+        val before = FakeHome().apply { start(WidgetAddFlow(sheet, plain)) }
+        val after = FakeHome(spot = rejected(Rejection.TooLarge))
+
+        after.start(WidgetAddFlow(sheet, plain, WidgetAddFlow.State.decode(before.flow.state.encode())!!))
+
+        assertEquals(PinAdd.Disabled(Rejection.TooLarge), after.offered)
+    }
+
+    @Test
     fun `a Pin Request that cannot be accepted takes the placed widget back out`() {
         val home = FakeHome(acceptSucceeds = false)
 
@@ -256,6 +332,9 @@ class WidgetAddFlowTest {
         val placed = mutableSetOf<Int>()
         var pending: Int? = null
         var outcome: WidgetAddOutcome? = null
+
+        /** What the pin sheet last offered. */
+        var offered: PinAdd? = null
         val screens = mutableListOf<String>()
 
         /** The widgets whose Pin Request was accepted. */
@@ -327,6 +406,7 @@ class WidgetAddFlowTest {
                         placed -= effect.id
                         allocated -= effect.id
                     }
+                    is Effect.Offer -> offered = effect.add
                     is Effect.Finish -> outcome = effect.outcome
                 }
             }
