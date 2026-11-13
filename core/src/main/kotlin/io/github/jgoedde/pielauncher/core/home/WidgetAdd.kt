@@ -46,6 +46,10 @@ sealed interface WidgetAddOutcome {
     data object Cancelled : WidgetAddOutcome
 }
 
+/** How a widget add or an Edit Mode move or resize refused for [this] reason is reported: too large, else no room. */
+val Rejection.outcome: WidgetAddOutcome
+    get() = if (this == Rejection.TooLarge) WidgetAddOutcome.TooLarge else WidgetAddOutcome.NoRoom
+
 /**
  * Turns widget adds (targets and outcomes) and the span bounds a widget drag carries into strings
  * for Intent and ClipDescription extras, and back; decoding anything else gives null. Widget

@@ -55,13 +55,15 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.jgoedde.pielauncher.PieLauncherApplication
 import io.github.jgoedde.pielauncher.R
 import io.github.jgoedde.pielauncher.core.drawer.offersWidgets
+import io.github.jgoedde.pielauncher.core.home.DropStart
 import io.github.jgoedde.pielauncher.core.home.EditMode
+import io.github.jgoedde.pielauncher.core.home.IncomingWidgetDrag
 import io.github.jgoedde.pielauncher.core.home.PageZone
 import io.github.jgoedde.pielauncher.core.home.Rejection
 import io.github.jgoedde.pielauncher.core.home.WidgetAddOutcome
 import io.github.jgoedde.pielauncher.core.home.WidgetAddTarget
-import io.github.jgoedde.pielauncher.core.home.WidgetDrop
 import io.github.jgoedde.pielauncher.core.home.WidgetLayout
+import io.github.jgoedde.pielauncher.core.home.outcome
 import io.github.jgoedde.pielauncher.core.icons.IconShapes
 import io.github.jgoedde.pielauncher.core.pie.PieState
 import io.github.jgoedde.pielauncher.drawer.AppDrawer
@@ -173,13 +175,7 @@ class HomeActivity : ComponentActivity() {
                     val editor = remember { WidgetEditor(HomeWidgetEditActions(scope, snackbars)) }
                     val addWidget =
                         rememberLauncherForActivityResult(AddWidgetContract()) { outcome ->
-                            val message =
-                                when (outcome) {
-                                    WidgetAddOutcome.NoRoom -> R.string.widget_no_space
-                                    WidgetAddOutcome.TooLarge -> R.string.widget_too_large
-                                    is WidgetAddOutcome.Added, WidgetAddOutcome.Cancelled -> null
-                                }
-                            if (message != null) scope.launch { snackbars.showSnackbar(getString(message)) }
+                            outcome.message?.let { scope.launch { snackbars.showSnackbar(getString(it)) } }
                             // The new widget's Page shows and its Resize Frame opens at once (Launcher3).
                             if (outcome is WidgetAddOutcome.Added) editor.added(outcome.widgetId, outcome.page) else editor.addEnded()
                         }
@@ -212,13 +208,10 @@ class HomeActivity : ComponentActivity() {
                         }
                     val widgetDrops =
                         remember(editor, drawer) {
-                            WidgetDropTarget(editor) { payload, drop ->
-                                when (payload) {
-                                    is WidgetDragPayload.Provider ->
-                                        addWidget.launch(AddWidgetRequest(WidgetAddTarget.Drop(drop), payload.provider, payload.profile))
-                                    // The trampoline takes the Pin Request from WidgetDragHandOff.pins.
-                                    is WidgetDragPayload.Pin -> addWidget.launch(AddWidgetRequest(WidgetAddTarget.Pin(payload.token, drop)))
-                                }
+                            WidgetDropTarget(editor, infoFound = ::infoFound) { target, payload ->
+                                // The trampoline takes a Pin Request from WidgetDragHandOff.pins.
+                                val provider = payload as? WidgetDragPayload.Provider
+                                addWidget.launch(AddWidgetRequest(target, provider?.provider, provider?.profile))
                             }
                         }
 
@@ -434,9 +427,20 @@ class HomeActivity : ComponentActivity() {
         }
 
         override fun rejected(reason: Rejection) {
-            scope.launch { snackbars.showSnackbar(getString(R.string.widget_no_space)) }
+            reason.outcome.message?.let { scope.launch { snackbars.showSnackbar(getString(it)) } }
         }
     }
+
+    /** Whether what [payload] drags still yields its widget's provider info, so an add can start. */
+    private fun infoFound(payload: WidgetDragPayload): Boolean =
+        when (payload) {
+            is WidgetDragPayload.Provider -> graph.widgetHost.provider(payload.provider, payload.profile) != null
+            is WidgetDragPayload.Pin ->
+                WidgetDragHandOff.pins
+                    .peek(payload.token)
+                    ?.takeIf { it.isValid }
+                    ?.getAppWidgetProviderInfo(this) != null
+        }
 
     override fun onStart() {
         super.onStart()
@@ -470,17 +474,33 @@ class HomeActivity : ComponentActivity() {
 
 private const val TAG = "HomeActivity"
 
+/** The snackbar message for an add that ended with [this]; null when there is nothing to say. */
+private val WidgetAddOutcome.message: Int?
+    get() =
+        when (this) {
+            WidgetAddOutcome.NoRoom -> R.string.widget_no_space
+            WidgetAddOutcome.TooLarge -> R.string.widget_too_large
+            is WidgetAddOutcome.Added, WidgetAddOutcome.Cancelled -> null
+        }
+
 /**
  * Home's end of the widget drag hand-off (#34 "Home drag target"): a widget dragged in from the
- * Widget Picker or the pin sheet becomes the Edit Mode move of a new widget, with
- * the same reflow. Dropped on the Widget Zones, it goes to [add] with where it landed.
+ * Widget Picker or the pin sheet becomes the Edit Mode move of a new widget, with the same
+ * reflow. [IncomingWidgetDrag] decides what the drag starts: an add, which goes to [add] with
+ * its target, or none, and then the Pin Request it held is released and the add has ended.
  */
 private class WidgetDropTarget(
     private val editor: WidgetEditor,
-    private val add: (WidgetDragPayload, WidgetDrop) -> Unit,
+    private val infoFound: (WidgetDragPayload) -> Boolean,
+    private val add: (WidgetAddTarget, WidgetDragPayload) -> Unit,
 ) : DragAndDropTarget {
+    private var drag: IncomingWidgetDrag? = null
+
     override fun onStarted(event: DragAndDropEvent) {
-        WidgetDragHandOff.boundsOf(event.toAndroidDragEvent())?.let(editor::startNewDrag)
+        val android = event.toAndroidDragEvent()
+        val bounds = WidgetDragHandOff.boundsOf(android) ?: return
+        editor.startNewDrag(bounds)
+        drag = IncomingWidgetDrag(held = WidgetDragHandOff.heldPinOf(android))
     }
 
     override fun onEntered(event: DragAndDropEvent) = editor.dragNewTo(event.finger)
@@ -493,12 +513,26 @@ private class WidgetDropTarget(
         val payload = WidgetDragHandOff.payloadOf(event.toAndroidDragEvent())
         editor.dragNewTo(event.finger)
         val drop = editor.dropNew()
-        if (payload == null || drop == null) return false
-        add(payload, drop)
-        return true
+        val start = drag?.drop(payload?.carry, drop, infoFound = payload != null && infoFound(payload)) ?: return false
+        if (start is DropStart.Add && payload != null) {
+            add(start.target, payload)
+            return true
+        }
+        noAdd(start as? DropStart.NoAdd)
+        return false
     }
 
-    override fun onEnded(event: DragAndDropEvent) = editor.endNewDrag()
+    override fun onEnded(event: DragAndDropEvent) {
+        editor.endNewDrag()
+        noAdd(drag?.end() as? DropStart.NoAdd)
+        drag = null
+    }
+
+    private fun noAdd(start: DropStart.NoAdd?) {
+        if (start == null) return
+        start.release?.let(WidgetDragHandOff.pins::release)
+        editor.addEnded()
+    }
 }
 
 /** Below the `ActivityResultRegistry` range, so the registry never claims this result. */
