@@ -99,11 +99,10 @@ class AddWidgetActivity : ComponentActivity() {
                 else -> null
             }
         if (target == null) return finishWith(WidgetAddOutcome.Cancelled)
-        // Recreated while a system screen is up: its result is still on the way.
         val saved = WidgetAddFlow.State.decode(savedInstanceState?.getString(STATE_FLOW))
         val flow = WidgetAddFlow(target, info?.addable(), saved ?: WidgetAddFlow.State.Start)
         this.flow = flow
-        if (saved == null) run(flow.start())
+        perform(flow.start())
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -132,15 +131,17 @@ class AddWidgetActivity : ComponentActivity() {
     }
 
     private fun send(event: Event) {
-        flow?.let { run(it.on(event)) }
+        flow?.let { perform(it.on(event)) }
     }
 
-    private fun run(effects: List<Effect>) = effects.forEach(::run)
+    private fun perform(effects: List<Effect>) = effects.forEach(::perform)
 
-    private fun run(effect: Effect) {
+    private fun perform(effect: Effect) {
         when (effect) {
             is Effect.FindSpot -> {
                 val info = info ?: return send(Event.IdGone)
+                val bound = effect.id
+                if (bound != null && widgets.info(bound) == null) return send(Event.IdGone)
                 lifecycleScope.launch { send(Event.SpotFound(widgets.findSpot(info, effect.target, zones()))) }
             }
             is Effect.Bind -> {

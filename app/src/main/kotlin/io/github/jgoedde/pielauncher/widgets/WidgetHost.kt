@@ -386,7 +386,10 @@ class WidgetHost(
         if (moves.isNotEmpty()) dao.insertAll(rows.mapNotNull { row -> moves[row.appWidgetId]?.let { row.copy(page = it) } })
     }
 
-    /** Deletes the removed widget [id] for good once its undo window is over (PRD 7.5): row and id. */
+    /**
+     * Deletes placed widget [id] for good, row and id, in the app scope: once its undo window is
+     * over (PRD 7.5), or when its Pin Request cannot be accepted.
+     */
     fun discard(id: Int) {
         appScope.launch { remove(id) }
     }

@@ -28,12 +28,25 @@ class WidgetAddFlow(
 
     private val pinned get() = target is WidgetAddTarget.Pin
 
-    fun start(): List<Effect> {
-        if (state != State.Start) return emptyList()
-        if (widget == null) return finish(WidgetAddOutcome.Cancelled)
-        state = State.FindingSpot
-        return listOf(Effect.FindSpot(target))
-    }
+    /**
+     * The effects that start the flow, or pick it up after a recreate: a lookup or placement whose
+     * coroutine died with the old trampoline runs again; a system screen's result is still on the way.
+     */
+    fun start(): List<Effect> =
+        when (val state = state) {
+            State.Start -> {
+                if (widget == null) {
+                    finish(WidgetAddOutcome.Cancelled)
+                } else {
+                    this.state = State.FindingSpot
+                    listOf(Effect.FindSpot(target))
+                }
+            }
+            State.FindingSpot -> listOf(Effect.FindSpot(target))
+            is State.CheckingSpot -> listOf(Effect.FindSpot(target, state.id))
+            is State.Placing -> listOf(Effect.Place(state.id, target))
+            State.Binding, is State.AskingToBind, is State.Configuring, is State.Accepting, State.Done -> emptyList()
+        }
 
     fun on(event: Event): List<Effect> {
         val state = state
@@ -50,7 +63,7 @@ class WidgetAddFlow(
                     is State.CheckingSpot -> {
                         val spot = event.placement.result
                         val page = event.placement.zone?.page
-                        if (spot !is LayoutResult.Changed || page == null) return exit(state.id, spot.outcome())
+                        if (spot !is LayoutResult.Changed || page == null) return abandon(state.id, spot.outcome())
                         this.state = State.Configuring(state.id)
                         listOf(Effect.ShowPending(state.id, page, spot), Effect.Configure(state.id))
                     }
@@ -60,7 +73,7 @@ class WidgetAddFlow(
                 when {
                     state !is State.Configuring -> emptyList()
                     event.ok -> place(state.id)
-                    else -> exit(state.id, WidgetAddOutcome.Cancelled)
+                    else -> abandon(state.id, WidgetAddOutcome.Cancelled)
                 }
             is Event.Accepted ->
                 when {
@@ -77,14 +90,14 @@ class WidgetAddFlow(
                 when {
                     state !is State.AskingToBind -> emptyList()
                     event.granted -> bound(state.id)
-                    else -> exit(state.id, WidgetAddOutcome.Cancelled)
+                    else -> abandon(state.id, WidgetAddOutcome.Cancelled)
                 }
             is Event.Placed ->
                 when (state) {
                     is State.Placing -> {
                         val placed = event.placement.result
                         val page = event.placement.zone?.page
-                        if (placed !is LayoutResult.Changed || page == null) return exit(state.id, placed.outcome())
+                        if (placed !is LayoutResult.Changed || page == null) return abandon(state.id, placed.outcome())
                         if (!pinned) return finish(WidgetAddOutcome.Added(state.id, page))
                         // Accepted only once placed, so the app never hears "added" for a widget that found no room.
                         this.state = State.Accepting(state.id, page)
@@ -92,7 +105,7 @@ class WidgetAddFlow(
                     }
                     else -> emptyList()
                 }
-            Event.IdGone -> state.id?.let { exit(it, WidgetAddOutcome.Cancelled) }.orEmpty()
+            Event.IdGone -> state.id?.let { abandon(it, WidgetAddOutcome.Cancelled) }.orEmpty()
             // Destroyed without a result: nothing to finish, only to clean up.
             Event.Destroyed -> {
                 this.state = State.Done
@@ -108,7 +121,7 @@ class WidgetAddFlow(
         // The platform contract: the launcher never configures a pinned widget (the app does).
         if (pinned || widget?.needsConfigure != true) return place(id)
         state = State.CheckingSpot(id)
-        return listOf(Effect.FindSpot(target))
+        return listOf(Effect.FindSpot(target, id))
     }
 
     private fun place(id: Int): List<Effect> {
@@ -117,7 +130,7 @@ class WidgetAddFlow(
     }
 
     /** Ends with [outcome], deleting the unplaced widget [id] and its pending preview. */
-    private fun exit(
+    private fun abandon(
         id: Int,
         outcome: WidgetAddOutcome,
     ): List<Effect> = listOf(Effect.DeleteUnplaced(id)) + finish(outcome)
@@ -261,9 +274,13 @@ class WidgetAddFlow(
 
     /** What the trampoline does next; each answers with the [Event] its doc names. */
     sealed interface Effect {
-        /** Look up where a widget of the provider would go at [target]: [Event.SpotFound]. */
+        /**
+         * Look up where a widget of the provider would go at [target]: [Event.SpotFound]. With the
+         * bound widget's [id], [Event.IdGone] instead when that id is no longer bound.
+         */
         data class FindSpot(
             val target: WidgetAddTarget,
+            val id: Int? = null,
         ) : Effect
 
         /**

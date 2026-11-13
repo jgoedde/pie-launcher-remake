@@ -177,6 +177,28 @@ class WidgetAddFlowTest {
     }
 
     @Test
+    fun `an id the startup reconcile deleted while the bind dialog was up is not configured`() {
+        val before = FakeHome(bindAllowed = false)
+        before.start(WidgetAddFlow(tap, configurable))
+        val saved = before.flow.state.encode()
+
+        val after = FakeHome()
+        after.resume(WidgetAddFlow(tap, configurable, WidgetAddFlow.State.decode(saved)!!))
+        after.answer(Event.BindAnswered(granted = true))
+
+        assertEquals(emptyList<String>(), after.screens)
+        after.assertLeftNothing(WidgetAddOutcome.Cancelled)
+    }
+
+    @Test
+    fun `a flow recreated while looking for a spot or placing looks or places again`() {
+        assertEquals(listOf(Effect.FindSpot(tap)), WidgetAddFlow(tap, plain, WidgetAddFlow.State.FindingSpot).start())
+        assertEquals(listOf(Effect.FindSpot(tap, id = 1)), WidgetAddFlow(tap, configurable, WidgetAddFlow.State.CheckingSpot(1)).start())
+        assertEquals(listOf(Effect.Place(1, tap)), WidgetAddFlow(tap, plain, WidgetAddFlow.State.Placing(1)).start())
+        assertEquals(emptyList<Effect>(), WidgetAddFlow(tap, configurable, WidgetAddFlow.State.Configuring(1)).start())
+    }
+
+    @Test
     fun `the flow resumes a bind dialog or configure screen after a recreate`() {
         val home = FakeHome(bindAllowed = false)
         home.start(WidgetAddFlow(tap, configurable))
@@ -267,7 +289,8 @@ class WidgetAddFlowTest {
         private fun run(effects: List<Effect>) {
             for (effect in effects) {
                 when (effect) {
-                    is Effect.FindSpot -> answer(Event.SpotFound(spot))
+                    is Effect.FindSpot ->
+                        if (effect.id != null && effect.id !in allocated) answer(Event.IdGone) else answer(Event.SpotFound(spot))
                     is Effect.Bind -> {
                         val id = nextId++
                         allocations++
