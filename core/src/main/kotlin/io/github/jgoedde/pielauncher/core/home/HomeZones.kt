@@ -8,8 +8,9 @@ const val HOME_PAGE = 0
 /**
  * The Widget Zones of the Pages (PRD 3.2, 3.3). The Home Page has two: the upper zone takes the
  * height the Pie Zone and the lower zone leave; the lower zone is exactly [LOWER_ZONE_ROWS] cell
- * rows. Every other Page is one zone over its full height ([page]). All share one cell size and
- * the cell gap. Sizes in px, measured inside the mandatory system gesture insets.
+ * rows. Every other Page is one zone over its full height ([page]). All share one cell size, the
+ * cell gap and the zone padding at the side edges. Sizes in px, measured inside the mandatory
+ * system gesture insets.
  */
 data class HomeZones(
     val cellPx: Float,
@@ -78,7 +79,7 @@ data class HomeZones(
         ) = if (pitch <= 0f) 0 else (offset / pitch).roundToInt().coerceAtMost(count - minOf(size, count)).coerceAtLeast(0)
         return DragTarget.Cell(
             zone,
-            column = nearest(left, grid.cellWidth + grid.gap, grid.columns, span.width),
+            column = nearest(left - grid.horizontalPadding, grid.cellWidth + grid.gap, grid.columns, span.width),
             row = nearest(top - topPx(zone) - grid.verticalPadding, grid.cellHeight + grid.gap, grid.rows, span.height),
         )
     }
@@ -109,18 +110,19 @@ data class HomeZones(
             heightPx: Float,
             pieZoneHeightPx: Float,
             cellGapPx: Float,
+            zonePaddingPx: Float = 0f,
         ): HomeZones {
-            val cell = CellGrid.cellSizeFor(widthPx, cellGapPx)
+            val cell = CellGrid.cellSizeFor(widthPx - 2 * zonePaddingPx, cellGapPx)
             val lowerHeight = cell * LOWER_ZONE_ROWS + cellGapPx * (LOWER_ZONE_ROWS - 1)
             val upperHeight = (heightPx - pieZoneHeightPx - lowerHeight).coerceAtLeast(0f)
             return HomeZones(
                 cellPx = cell,
                 upperHeightPx = upperHeight,
                 lowerHeightPx = lowerHeight,
-                upper = CellGrid.of(widthPx, upperHeight, cellGapPx),
-                lower = CellGrid.of(widthPx, lowerHeight, cellGapPx),
+                upper = CellGrid.of(widthPx, upperHeight, cellGapPx, zonePaddingPx),
+                lower = CellGrid.of(widthPx, lowerHeight, cellGapPx, zonePaddingPx),
                 pieZoneHeightPx = pieZoneHeightPx,
-                page = CellGrid.of(widthPx, upperHeight + pieZoneHeightPx + lowerHeight, cellGapPx),
+                page = CellGrid.of(widthPx, upperHeight + pieZoneHeightPx + lowerHeight, cellGapPx, zonePaddingPx),
             )
         }
     }

@@ -41,6 +41,7 @@ class HomeGeometry {
             heightPx = (metrics.bounds.height() - insets.top - insets.bottom).toFloat(),
             pieZoneHeightPx = HomePageLayout.PieZoneHeight.value * density,
             cellGapPx = CellGrid.CELL_GAP_DP * density,
+            zonePaddingPx = CellGrid.ZONE_PADDING_DP * density,
         )
     }
 }

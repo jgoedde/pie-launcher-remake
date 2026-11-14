@@ -17,6 +17,16 @@ class DragTargetTest {
     }
 
     @Test
+    fun `columns snap against the grid inset by the zone padding`() {
+        // 432 wide, 16 padding, 16 gap -> 88 px cells, columns start at 16, 120, 224, 328.
+        val padded = HomeZones.of(widthPx = 432f, heightPx = 1100f, pieZoneHeightPx = 600f, cellGapPx = 16f, zonePaddingPx = 16f)
+
+        // 60 is 44 px right of column 0 and 60 px left of column 1.
+        assertEquals(DragTarget.Cell(HomeUpper, 0, 0), padded.dragTarget(100f, 50f, left = 60f, top = 0f, span = CellSpan(1, 1)))
+        assertEquals(DragTarget.Cell(HomeUpper, 1, 0), padded.dragTarget(150f, 50f, left = 120f, top = 0f, span = CellSpan(1, 1)))
+    }
+
+    @Test
     fun `a finger over the Pie Zone targets the Pie Zone`() {
         assertEquals(DragTarget.PieZone, zones.dragTarget(200f, 500f, left = 100f, top = 450f, span = CellSpan(2, 1)))
     }

@@ -122,10 +122,11 @@ internal fun <W> HomePages(
         val density = LocalDensity.current
         val pieZonePx = with(density) { HomePageLayout.PieZoneHeight.toPx() }
         val cellGapPx = with(density) { CellGrid.CELL_GAP_DP.dp.toPx() }
+        val zonePaddingPx = with(density) { CellGrid.ZONE_PADDING_DP.dp.toPx() }
         val edgePx = with(density) { HomePageLayout.PageEdge.toPx() }
         val zones =
-            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx) {
-                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx)
+            remember(constraints.maxWidth, constraints.maxHeight, pieZonePx, cellGapPx, zonePaddingPx) {
+                HomeZones.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), pieZonePx, cellGapPx, zonePaddingPx)
             }
         LaunchedEffect(zones) { onZonesLaidOut(zones) }
         val minPages = editor.minPages
