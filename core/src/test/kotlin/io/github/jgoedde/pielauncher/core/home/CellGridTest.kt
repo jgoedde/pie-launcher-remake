@@ -70,6 +70,17 @@ class CellGridTest {
     }
 
     @Test
+    fun `the grid is inset from the zone's side edges and its cells shrink to fit`() {
+        // 432 wide, 16 padding each side -> 400 for 4 cells and 3 gaps of 16 -> 88 px cells.
+        val grid = CellGrid.of(zoneWidth = 432f, zoneHeight = 400f, gap = 16f, horizontalPadding = 16f)
+
+        assertEquals(88f, grid.cellWidth, 0f)
+        assertEquals(88f, grid.cellHeight, 0f)
+        assertEquals(CellBounds(left = 16f, top = 0f, width = 88f, height = 88f), grid.bounds(CellRect(0, 0, 1, 1)))
+        assertEquals(CellBounds(left = 328f, top = 0f, width = 88f, height = 88f), grid.bounds(CellRect(3, 0, 1, 1)))
+    }
+
+    @Test
     fun `a widget's bounds cover its cells and the gaps between them`() {
         // 4 rows of 88 + 3 gaps = 400 -> 25 above and below.
         val grid = CellGrid.of(zoneWidth = 400f, zoneHeight = 450f, gap = 16f)

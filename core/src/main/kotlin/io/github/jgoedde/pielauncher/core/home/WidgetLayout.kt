@@ -180,11 +180,11 @@ class WidgetLayout(
         y: Float,
     ): DragTarget.Cell? {
         val grid = grids[zone] ?: return null
-        if (grid.cellWidth <= 0f || grid.cellHeight <= 0f || x < 0f || y < grid.verticalPadding) return null
-        val column = floor(x / (grid.cellWidth + grid.gap)).toInt()
+        if (grid.cellWidth <= 0f || grid.cellHeight <= 0f || x < grid.horizontalPadding || y < grid.verticalPadding) return null
+        val column = floor((x - grid.horizontalPadding) / (grid.cellWidth + grid.gap)).toInt()
         val row = floor((y - grid.verticalPadding) / (grid.cellHeight + grid.gap)).toInt()
         val insideLastCell =
-            x < grid.columns * (grid.cellWidth + grid.gap) - grid.gap &&
+            x < grid.horizontalPadding + grid.columns * (grid.cellWidth + grid.gap) - grid.gap &&
                 y < grid.verticalPadding + grid.rows * (grid.cellHeight + grid.gap) - grid.gap
         if (column !in 0 until grid.columns || row !in 0 until grid.rows || !insideLastCell) return null
         return DragTarget.Cell(zone, column, row)

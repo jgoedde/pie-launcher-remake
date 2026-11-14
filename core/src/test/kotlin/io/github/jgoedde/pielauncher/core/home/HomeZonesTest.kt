@@ -37,6 +37,19 @@ class HomeZonesTest {
     }
 
     @Test
+    fun `the zone padding shrinks the cells of every Widget Zone and the lower zone follows`() {
+        // 432 wide, 16 padding each side, 16 gap -> 88 px cells. Lower zone 2*88 + 16 = 192.
+        val zones = HomeZones.of(widthPx = 432f, heightPx = 1000f, pieZoneHeightPx = 300f, cellGapPx = 16f, zonePaddingPx = 16f)
+
+        assertEquals(88f, zones.cellPx, 0f)
+        assertEquals(192f, zones.lowerHeightPx, 0f)
+        listOf(zones.upper, zones.lower, zones.page).forEach { grid ->
+            assertEquals(88f, grid.cellWidth, 0f)
+            assertEquals(16f, grid.bounds(CellRect(0, 0, 1, 1)).left, 0f)
+        }
+    }
+
+    @Test
     fun `widgets are sized against the larger zone's grid, in dp`() {
         // 2 px per dp: 800 wide, 32 px gap -> 176 px cells (88 dp), 16 dp gap; upper 1016 px -> 5 rows.
         val zones = HomeZones.of(widthPx = 800f, heightPx = 2000f, pieZoneHeightPx = 600f, cellGapPx = 32f)
